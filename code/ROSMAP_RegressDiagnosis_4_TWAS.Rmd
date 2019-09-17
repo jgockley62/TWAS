@@ -626,142 +626,111 @@ all.annotations = list(
   genomeAssemblyID = 'GRCh37'
 )
 
-# Store enrichment results
+# Store SVA results
 write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'ROSMAP_SVA_Diagnosis_Corrected.tsv', sep = '\t', quote=F)
 ENRICH_OBJ = File('ROSMAP_SVA_Diagnosis_Corrected.tsv', 
-                  name = 'SVA and Diagnosis Regressed Data', 
+                  name = 'Normalised, covariates, surrogate and Diagnosis variable adjusted residual expression (for eQTL)', 
                   parentId = CODE$properties$id)
 ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
                       executed = thisFile, activityDescription = activityDescription)
-all.annotations$dataSubType = 'SVA_Diagnosis_Regressed'
+all.annotations$dataSubType = 'residualGeneExpForeQTL'
 synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
-
-
-#Store file:
-activity <- Activity(
-    'Fancy Processing',
-    description='No seriously, really fancy processing',
-    used=c('syn1906480', 'http://data_r_us.com/fancy/data.txt'),
-    executed='syn1917825')
-file <- File('/path/to/data/file.xyz', description='Fancy new data', parent=project)
-file <- synStore(file, activity=activity)
-
-# Function to change entity ACL (also creates new acls if it doesn't exist)
-synChangeEntityACL <- function(id, new.racl){
-  tryCatch({ 
-    # If old acl exist update
-    old.acl = synGetEntityACL(id)
-    old.acl@resourceAccess = new.racl
-    synUpdateEntityACL(old.acl)
-  }, error = function(e){ 
-    # If not create a new acl
-    new.acl = AccessControlList(id = id, resourceAccess = new.racl)
-    synCreateEntityACL(new.acl)
-  })
-}
-
-# Create new resource acls
-new.racl = synapser::synSetPermissions(principalId = '3319864', 
-                          accessType = c('UPDATE', 'CHANGE_SETTINGS', 'DELETE', 'READ', 
-                                         'DOWNLOAD', 'MODERATE', 'CREATE', 'CHANGE_PERMISSIONS')) %>%
-  ResourceAccessList() %>%
-  synapseClient::append(synSetPermissions(principalId = '273995', 
-                                       accessType = c('UPDATE', 'CHANGE_SETTINGS', 'DELETE', 'READ', 
-                                                      'DOWNLOAD', 'MODERATE', 'CREATE', 'CHANGE_PERMISSIONS'))) %>%
-  synapseClient::append(synSetPermissions(principalId = '3344250', 
-                                       accessType = c('READ', 'DOWNLOAD')))
-# Get annotations
-all.annotations = annotations(COUNT_OBJ)
-# Code
-CODE <- Folder(name = "ROSMAP Reprocessed RNASeq (Normalised) Diagnosis Removed", parentId = parentId)
-CODE <- synStore(CODE)
-old.acl = synGetEntityACL(CODE@properties$id)
-synChangeEntityACL(CODE@properties$id, new.racl)
 # Store covariates
 COVARIATES = rownameToFirstColumn(COVARIATES, 'SampleID')
-write.table(COVARIATES, file = 'ROSMAP_DLPFC_Covariates.tsv', sep = '\t', row.names=F, quote=F)
-COV_OBJ = File('ROSMAP_DLPFC_Covariates.tsv', name = 'Covariates', parentId = CODE$properties$id)
-all.annotations@annotations@stringAnnotations$normalizationStatus	= TRUE
-all.annotations@annotations@stringAnnotations$normalizationType	= 'CQN'
-all.annotations@annotations@stringAnnotations$fileFormat = 'tsv'
-all.annotations@annotations@stringAnnotations$dataSubType = 'covariates'
-annotations(COV_OBJ) = all.annotations
-COV_OBJ = synStore(COV_OBJ, used = ALL_USED_IDs, activityName = activityName,
-                   executed = thisFile, activityDescription = activityDescription)
-synChangeEntityACL(COV_OBJ@properties$id, new.racl)
+write.table(COVARIATES, file = 'ROSMAP_SVA_Diagnosis_Covariates.tsv', row.names = F, sep = '\t', quote=F)
+ENRICH_OBJ = File('ROSMAP_SVA_Diagnosis_Covariates.tsv', 
+                  name = 'Covariates', 
+                  parentId = CODE$properties$id)
+ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
+                      executed = thisFile, activityDescription = activityDescription)
+all.annotations$dataSubType = 'covariates'
+synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
 # Store filtered counts
 PROCESSED_COUNTS$filteredExprMatrix$counts %>%
   rownameToFirstColumn('ensembl_gene_id') %>%
-  write.table(file = 'ROSMAP_DLPFC_Counts.tsv', sep = '\t', row.names=F, quote=F)
-COUNT_OBJ = File('ROSMAP_DLPFC_Counts.tsv', name = 'Counts (filtered raw)', parentId = CODE$properties$id)
-all.annotations@annotations@stringAnnotations$dataSubType = 'filteredCounts'
-annotations(COUNT_OBJ) = all.annotations
-COUNT_OBJ = synStore(COUNT_OBJ, activity = synGetActivity(COV_OBJ$properties$id))
-# Store filtered counts
+  write.table(file = 'ROSMAP_DLPFC_Diagnosis_Regressed_Counts.tsv', sep = '\t', row.names=F, quote=F)
+ENRICH_OBJ = File('ROSMAP_DLPFC_Diagnosis_Regressed_Counts.tsv', 
+                  name = 'Counts (filtered raw)', 
+                  parentId = CODE$properties$id)
+ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
+                      executed = thisFile, activityDescription = activityDescription)
+all.annotations$dataSubType = 'filteredCounts'
+synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
+# Store Estimated counts
 NEW.COUNTS %>%
   rownameToFirstColumn('ensembl_gene_id') %>%
-  write.table(file = 'ROSMAP_DLPFC_eCounts.tsv', sep = '\t', row.names=F, quote=F)
-ECOUNT_OBJ = File('ROSMAP_DLPFC_eCounts.tsv', name = 'Counts (estimated)', parentId = CODE$properties$id)
-all.annotations@annotations@stringAnnotations$dataSubType = 'estimatedCounts'
-annotations(ECOUNT_OBJ) = all.annotations
-ECOUNT_OBJ = synStore(ECOUNT_OBJ, activity = synGetActivity(COV_OBJ$properties$id))
+  write.table(file = 'ROSMAP_DLPFC_Diagnosis_Regressed_eCounts.tsv', sep = '\t', row.names=F, quote=F)
+ENRICH_OBJ = File('ROSMAP_DLPFC_Diagnosis_Regressed_Counts.tsv', 
+                  name = 'Counts (estimated)', 
+                  parentId = CODE$properties$id)
+ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
+                      executed = thisFile, activityDescription = activityDescription)
+all.annotations$dataSubType = 'estimatedCounts'
+synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
 # Store logCPM
 CQN.GENE_EXPRESSION$y %>%
   rownameToFirstColumn('ensembl_gene_id') %>%
-  write.table(file = 'ROSMAP_DLPFC_logCPM.tsv', sep = '\t', row.names=F, quote=F)
-LCOUNT_OBJ = File('ROSMAP_DLPFC_logCPM.tsv', name = 'Counts (filtered logCPM)', parentId = CODE$properties$id)
-all.annotations@annotations@stringAnnotations$dataSubType = 'filteredLCPM'
-annotations(LCOUNT_OBJ) = all.annotations
-LCOUNT_OBJ = synStore(LCOUNT_OBJ, activity = synGetActivity(COV_OBJ$properties$id))
+  write.table(file = 'ROSMAP_DLPFC_Diagnosis_Regressed_logCPM.tsv', sep = '\t', row.names=F, quote=F)
+ENRICH_OBJ = File('ROSMAP_DLPFC_Diagnosis_Regressed_logCPM.tsv', 
+                  name = 'Counts (filtered logCPM)', 
+                  parentId = CODE$properties$id)
+ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
+                      executed = thisFile, activityDescription = activityDescription)
+all.annotations$dataSubType = 'filteredLCPM'
+synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
 # Store cqn offsets
 CQN.GENE_EXPRESSION$offset %>%
   rownameToFirstColumn('ensembl_gene_id') %>%
-  write.table(file = 'ROSMAP_DLPFC_offset.tsv', sep = '\t', row.names=F, quote=F)
-OFFSET_OBJ = File('ROSMAP_DLPFC_offset.tsv', name = 'Gene length and GC content offset', parentId = CODE$properties$id)
-all.annotations@annotations@stringAnnotations$dataSubType = 'offset'
-annotations(OFFSET_OBJ) = all.annotations
-OFFSET_OBJ = synStore(OFFSET_OBJ, activity = synGetActivity(COV_OBJ$properties$id))
+  write.table(file = 'ROSMAP_DLPFC_Diagnosis_Regressed_offset.tsv', sep = '\t', row.names=F, quote=F)
+ENRICH_OBJ = File('ROSMAP_DLPFC_Diagnosis_Regressed_offset.tsv', 
+                  name = 'Gene length and GC content offset', 
+                  parentId = CODE$properties$id)
+ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
+                      executed = thisFile, activityDescription = activityDescription)
+all.annotations$dataSubType = 'offset'
+synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
 # Store design matrix
 MODEL1 %>%
   rownameToFirstColumn('SampleID') %>%
-  write.table(file = 'ROSMAP_DLPFC_Design.tsv', sep = '\t', row.names=F, quote=F)
-DM_OBJ = File('ROSMAP_DLPFC_Design.tsv', name = 'Design Matrix', parentId = CODE$properties$id)
-all.annotations@annotations@stringAnnotations$dataSubType = 'designMatrix'
-annotations(DM_OBJ) = all.annotations
-DM_OBJ = synStore(DM_OBJ, activity = synGetActivity(COV_OBJ$properties$id))
-synChangeEntityACL(DM_OBJ@properties$id, new.racl)
+  write.table(file = 'ROSMAP_DLPFC_Diagnosis_Regressed_Design.tsv', sep = '\t', row.names=F, quote=F)
+ENRICH_OBJ = File('ROSMAP_DLPFC_Diagnosis_Regressed_Design.tsv', 
+                  name = 'Design Matrix', 
+                  parentId = CODE$properties$id)
+ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
+                      executed = thisFile, activityDescription = activityDescription)
+all.annotations$dataSubType = 'designMatrix'
+synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
 # Store surrogate variables
 SURR.VAR %>%
   rownameToFirstColumn('SampleID') %>%
-  write.table(file = 'ROSMAP_DLPFC_SurVar.tsv', sep = '\t', row.names=F, quote=F)
-SURR_OBJ = File('ROSMAP_DLPFC_SurVar.tsv', name = 'Surrogate Variables', parentId = CODE$properties$id)
-all.annotations@annotations@stringAnnotations$dataSubType = 'surrogateVariables'
-annotations(SURR_OBJ) = all.annotations
-SURR_OBJ = synStore(SURR_OBJ, activity = synGetActivity(COV_OBJ$properties$id))
-# Store residual gene expression for eQTL analysis
-RESIDUAL.SVA.GENE_EXPRESSION %>%
-  rownameToFirstColumn('ensembl_gene_id') %>%
-  write.table(file = 'ROSMAP_DLPFC_eQTLResidualExpression.tsv', sep = '\t', row.names=F, quote=F)
-eEXP_OBJ = File('ROSMAP_DLPFC_eQTLResidualExpression.tsv', 
-                name = 'Normalised, covariates, surrogate and Diagnosisvariable adjusted residual expression (for eQTL)',
-                parentId = CODE$properties$id)
-all.annotations@annotations@stringAnnotations$dataSubType = 'residualGeneExpForeQTL'
-annotations(eEXP_OBJ) = all.annotations
-eEXP_OBJ = synStore(eEXP_OBJ, activity = synGetActivity(COV_OBJ$properties$id))
+  write.table(file = 'ROSMAP_DLPFC_Diagnosis_Regressed_SurVar.tsv', sep = '\t', row.names=F, quote=F)
+ENRICH_OBJ = File('ROSMAP_DLPFC_Diagnosis_Regressed_SurVar.tsv', 
+                  name = 'Surrogate Variables', 
+                  parentId = CODE$properties$id)
+ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
+                      executed = thisFile, activityDescription = activityDescription)
+all.annotations$dataSubType = 'surrogateVariables'
+synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
 # Store residual gene expression for network analysis
 RESIDUAL.NET.GENE_EXPRESSION %>%
   rownameToFirstColumn('ensembl_gene_id') %>%
-  write.table(file = 'ROSMAP_DLPFC_netResidualExpression.tsv', sep = '\t', row.names=F, quote=F)
-nEXP_OBJ = File('ROSMAP_DLPFC_netResidualExpression.tsv', 
-                name = 'Normalised, covariates and Diagnosis removed residual expression (for network analysis)', 
-                parentId = CODE$properties$id)
-all.annotations@annotations@stringAnnotations$dataSubType = 'residualGeneExpForNetAnlz'
-annotations(nEXP_OBJ) = all.annotations
-nEXP_OBJ = synStore(nEXP_OBJ, activity = synGetActivity(COV_OBJ$properties$id))
+  write.table(file = 'ROSMAP_DLPFC_Diagnosis_Regressed_netResidualExpression.tsv', sep = '\t', row.names=F, quote=F)
+ENRICH_OBJ = File('ROSMAP_DLPFC_Diagnosis_Regressed_netResidualExpression.tsv', 
+                  name = 'Normalised, covariates and Diagnosis removed residual expression (for network analysis)', 
+                  parentId = CODE$properties$id)
+ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
+                      executed = thisFile, activityDescription = activityDescription)
+all.annotations$dataSubType = 'residualGeneExpForNetAnlz'
+synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
-# Delete folder acl
-synChangeEntityACL(CODE@properties$id, old.acl@resourceAccess)
 stopCluster(cl)
 ```
 
@@ -773,6 +742,5 @@ library(synapseClient)
 library(knit2synapse) # get the package from devtools::install_github('Sage-Bionetworks/knit2synapse')
 synapseLogin()
 knit2synapse::knitfile2synapse(file = "./ROSMAP_RegressDiagnosis_4_TWAS.Rmd",
-                                 owner = "syn20798014")#,
-                                 #entityName = 'ROSMAP Reprocessed RNASeq (Normalised) Diagnosis Regressed Using #Diagnosis as Covariate')
+                                 owner = "syn20798014")
 ```
