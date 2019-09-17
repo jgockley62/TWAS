@@ -588,16 +588,23 @@ write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = "ROSMAP_SVA_Diagnosis_Corrected
 
 ```{r synapse.parameters, include=FALSE, cache=TRUE}
 parentId = 'syn20798014';
-activityName = 'Covariate adjustments';
+activityName = 'Covariate and Diagnosis Regression';
 activityDescription = 'Covariate analysis and Regrsison of AD Diagnosis of aligned effective counts with GRCh37 with CQN normalisation (DLPFC)';
 thisFileName <- 'ROSMAP_RegressDiagnosis_4_TWAS.Rmd'
 # Github link
-thisRepo <- getRepo(repository = "kelshmo/Brain_Reg_Net", ref="branch", refName='CMC')
-thisFile <- getPermlink(repository = thisRepo, repositoryPath=paste0('code/Rmd/',thisFileName))
+thisRepo <- getRepo(repository = "jgockley62/TWAS", ref="branch", refName='master')
+thisFile <- getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thisFileName))
 ```
 
 ### Store files in synapse
 ```{r synapse.store, include=FALSE, eval=TRUE, cache=FALSE}
+activityName = 'Covariate and Diagnosis Regression';
+activityDescription = 'Covariate analysis and Regrsison of AD Diagnosis of aligned effective counts with GRCh37 with CQN normalisation (DLPFC)';
+
+# Code WTF is this??
+CODE <- Folder(name = "DLPFC - RSEM - EXPECTED COUNTS - GRCh37 - CQN - SVAandDiagnosisRegress - JKG", parentId = parentId)
+CODE <- synStore(CODE)
+
 #Set Used SynIDs For Provenance
 Syns_Used <- c("syn3382527", "syn4300313", "syn8449369", "syn7116000",
   "syn8691134", "syn3191087", "syn8698240"
@@ -618,6 +625,18 @@ all.annotations = list(
   rnaquantification = 'RSEM',
   genomeAssemblyID = 'GRCh37'
 )
+
+# Store enrichment results
+write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'ROSMAP_SVA_Diagnosis_Corrected.tsv', sep = '\t', quote=F)
+ENRICH_OBJ = File('ROSMAP_SVA_Diagnosis_Corrected.tsv', 
+                  name = 'SVA and Diagnosis Regressed Data', 
+                  parentId = CODE$properties$id)
+ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
+                      executed = thisFile, activityDescription = activityDescription)
+all.annotations$dataSubType = 'SVA_Diagnosis_Regressed'
+synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
+
 
 #Store file:
 activity <- Activity(
