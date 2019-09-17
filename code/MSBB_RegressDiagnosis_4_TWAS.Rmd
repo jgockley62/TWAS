@@ -754,7 +754,7 @@ stopCluster(cl)
 ```{r knitmd, eval=FALSE, cache=FALSE, include=FALSE}
 library(synapseClient)
 library(knit2synapse) # get the package from devtools::install_github('Sage-Bionetworks/knit2synapse')
-synapseLogin()
+synLogin()
 knit2synapse::knitfile2synapse(file = "~/TWAS/code/MSBB_RegressDiagnosis_4_TWAS.Rmd",
                                  owner = "syn20798012")
 ```
