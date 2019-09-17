@@ -7,15 +7,12 @@ editor_options:
   Date of analysis update: "`r date()`"
   
   
-  syn8691099.1
+syn8691099.1
 syn10156693.3
 syn8698270.1
 syn8449369.2
 syn6100548.7
 syn6101474.4
-  
-The [markdown](https://www.synapse.org/#!Synapse:syn8484987) produced for this publication is available on Synapse with files linked via Provenance. 
-  
 
 ```{r libs, echo=FALSE, warning=FALSE, message=FALSE, include=FALSE, cache=FALSE}
 ##It is assumed your working directory is "~/ampad-DiffExp/gene_level_analysis"
@@ -603,8 +600,161 @@ RESIDUAL.SVA.GENE_EXPRESSION = RESIDUAL.SVA.GENE_EXPRESSION +
   VOOM.SVA.FIT$coefficients[,varsToAddIn] %*% t(VOOM.SVA.FIT$design[,varsToAddIn])
 ```
 
-### Save Environment and SVA.GENE_EXPRESSION
-```{r SAVE and Wrap}
-save.image("MSBB.RData")
-write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = "MSBB_SVA_Diagnosis_Corrected.tsv", row.names = T, col.names = T, sep ="\t", quote=F)
+```{r synapse.parameters, include=FALSE, cache=TRUE}
+parentId = 'syn20798011';
+activityName = 'Covariate and Diagnosis Regression';
+activityDescription = 'Covariate analysis and Regrsison of AD Diagnosis of aligned effective counts with GRCh37 with CQN normalisation (IFG, STG, FP, PHG)';
+thisFileName <- 'MSBB_RegressDiagnosis_4_TWAS.Rmd'
+# Github link
+thisRepo <- getRepo(repository = "jgockley62/TWAS", ref="branch", refName='master')
+thisFile <- getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thisFileName))
+```
+
+### Store files in synapse
+```{r synapse.store, include=FALSE, eval=TRUE, cache=FALSE}
+activityName = 'Covariate and Diagnosis Regression';
+activityDescription = 'Covariate analysis and Regrsison of AD Diagnosis of aligned effective counts with GRCh37 with CQN normalisation (IFG, STG, FP, PHG)';
+
+# Code WTF is this??
+CODE <- Folder(name = "MSBB", parentId = parentId)
+CODE <- synStore(CODE)
+
+#Set Used SynIDs For Provenance
+Syns_Used <- c("syn8691099", "syn10156693", "syn8698270", 
+               "syn8449369", "syn6100548", "syn6101474"
+)
+
+# Set annotations
+all.annotations = list(
+  dataType = 'mRNA',
+  dataSubType = 'geneExp',
+  summaryLevel = 'gene',
+  assay	 = 'RNAseq',
+  tissueTypeAbrv	= c('IFG', 'STG', 'FP', 'PHG'), 
+  study = 'MSBB', 
+  organism = 'HomoSapiens',
+  consortium	= 'AMPAD',
+  normalizationStatus	= TRUE,
+  normalizationType	= 'CQN',
+  rnaquantification = 'RSEM',
+  genomeAssemblyID = 'GRCh37'
+)
+
+# Store SVA results
+write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'MSBB_SVA_Diagnosis_Corrected.tsv', sep = '\t', quote=F)
+ENRICH_OBJ = File('MSBB_SVA_Diagnosis_Corrected.tsv', 
+                  name = 'Normalised, covariates, surrogate and Diagnosis variable adjusted residual expression (for eQTL)', 
+                  parentId = CODE$properties$id)
+ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
+                      executed = thisFile, activityDescription = activityDescription)
+all.annotations$dataSubType = 'residualGeneExpForeQTL'
+synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
+# Store covariates
+COVARIATES = rownameToFirstColumn(COVARIATES, 'SampleID')
+write.table(COVARIATES, file = 'MSBB_SVA_Diagnosis_Covariates.tsv', row.names = F, sep = '\t', quote=F)
+ENRICH_OBJ = File('MSBB_SVA_Diagnosis_Covariates.tsv', 
+                  name = 'Covariates', 
+                  parentId = CODE$properties$id)
+ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
+                      executed = thisFile, activityDescription = activityDescription)
+all.annotations$dataSubType = 'covariates'
+synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
+# Store filtered counts
+PROCESSED_COUNTS$filteredExprMatrix$counts %>%
+  rownameToFirstColumn('ensembl_gene_id') %>%
+  write.table(file = 'MSBB_Diagnosis_Regressed_Counts.tsv', sep = '\t', row.names=F, quote=F)
+ENRICH_OBJ = File('MSBB_Diagnosis_Regressed_Counts.tsv', 
+                  name = 'Counts (filtered raw)', 
+                  parentId = CODE$properties$id)
+ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
+                      executed = thisFile, activityDescription = activityDescription)
+all.annotations$dataSubType = 'filteredCounts'
+synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
+# Store Estimated counts
+NEW.COUNTS %>%
+  rownameToFirstColumn('ensembl_gene_id') %>%
+  write.table(file = 'MSBB_Diagnosis_Regressed_eCounts.tsv', sep = '\t', row.names=F, quote=F)
+ENRICH_OBJ = File('MSBB_Diagnosis_Regressed_Counts.tsv', 
+                  name = 'Counts (estimated)', 
+                  parentId = CODE$properties$id)
+ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
+                      executed = thisFile, activityDescription = activityDescription)
+all.annotations$dataSubType = 'estimatedCounts'
+synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
+# Store logCPM
+CQN.GENE_EXPRESSION$y %>%
+  rownameToFirstColumn('ensembl_gene_id') %>%
+  write.table(file = 'MSBB_Diagnosis_Regressed_logCPM.tsv', sep = '\t', row.names=F, quote=F)
+ENRICH_OBJ = File('MSBB_Diagnosis_Regressed_logCPM.tsv', 
+                  name = 'Counts (filtered logCPM)', 
+                  parentId = CODE$properties$id)
+ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
+                      executed = thisFile, activityDescription = activityDescription)
+all.annotations$dataSubType = 'filteredLCPM'
+synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
+# Store cqn offsets
+CQN.GENE_EXPRESSION$offset %>%
+  rownameToFirstColumn('ensembl_gene_id') %>%
+  write.table(file = 'MSBB_Diagnosis_Regressed_offset.tsv', sep = '\t', row.names=F, quote=F)
+ENRICH_OBJ = File('MSBB_Diagnosis_Regressed_offset.tsv', 
+                  name = 'Gene length and GC content offset', 
+                  parentId = CODE$properties$id)
+ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
+                      executed = thisFile, activityDescription = activityDescription)
+all.annotations$dataSubType = 'offset'
+synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
+# Store design matrix
+MODEL1 %>%
+  rownameToFirstColumn('SampleID') %>%
+  write.table(file = 'MSBB_Diagnosis_Regressed_Design.tsv', sep = '\t', row.names=F, quote=F)
+ENRICH_OBJ = File('MSBB_Diagnosis_Regressed_Design.tsv', 
+                  name = 'Design Matrix', 
+                  parentId = CODE$properties$id)
+ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
+                      executed = thisFile, activityDescription = activityDescription)
+all.annotations$dataSubType = 'designMatrix'
+synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
+# Store surrogate variables
+SURR.VAR %>%
+  rownameToFirstColumn('SampleID') %>%
+  write.table(file = 'MSBB_Diagnosis_Regressed_SurVar.tsv', sep = '\t', row.names=F, quote=F)
+ENRICH_OBJ = File('MSBB_Diagnosis_Regressed_SurVar.tsv', 
+                  name = 'Surrogate Variables', 
+                  parentId = CODE$properties$id)
+ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
+                      executed = thisFile, activityDescription = activityDescription)
+all.annotations$dataSubType = 'surrogateVariables'
+synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
+# Store residual gene expression for network analysis
+RESIDUAL.NET.GENE_EXPRESSION %>%
+  rownameToFirstColumn('ensembl_gene_id') %>%
+  write.table(file = 'MSBB_Diagnosis_Regressed_netResidualExpression.tsv', sep = '\t', row.names=F, quote=F)
+ENRICH_OBJ = File('MSBB_Diagnosis_Regressed_netResidualExpression.tsv', 
+                  name = 'Normalised, covariates and Diagnosis removed residual expression (for network analysis)', 
+                  parentId = CODE$properties$id)
+ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
+                      executed = thisFile, activityDescription = activityDescription)
+all.annotations$dataSubType = 'residualGeneExpForNetAnlz'
+synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
+stopCluster(cl)
+```
+
+### R Source Code
+[Github](`r thisFile`)
+
+```{r knitmd, eval=FALSE, cache=FALSE, include=FALSE}
+library(synapseClient)
+library(knit2synapse) # get the package from devtools::install_github('Sage-Bionetworks/knit2synapse')
+synapseLogin()
+knit2synapse::knitfile2synapse(file = "~/TWAS/code/MSBB_RegressDiagnosis_4_TWAS.Rmd",
+                                 owner = "syn20798012")
 ```

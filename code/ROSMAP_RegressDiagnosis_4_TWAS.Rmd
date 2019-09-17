@@ -1,6 +1,8 @@
 ---
-title: Covariate and differential expression analysis of ROSMAP reprocessed counts Using Diagnosis as a covariate for TWAS
-author: "JKG - Adapted from: Thanneer Perumal"
+title: Covariate and differential expression analysis of ROSMAP reprocessed counts
+  Using Diagnosis as a covariate for TWAS
+author: 'JKG - Adapted from: Thanneer Perumal'
+output: pdf_document
 editor_options:
   chunk_output_type: console
 ---
@@ -131,8 +133,8 @@ METADATA <- METADATA %>%
   dplyr::filter(Sampleid %in% colnames(COUNT)) %>%
   dplyr::filter(!is.na(cogdx), !is.na(braaksc), !is.na(ceradsc)) %>%
   dplyr::filter(!is.na(RINcontinuous)) %>%
+  dplyr::filter(!is.na(PCT_INTRONIC_BASES)) %>%
   dplyr::filter(!is.na(pmi)) %>%
-  #dplyr::filter(!is.na(PCT_INTRONIC_BASES)) %>%
   dplyr::filter(!is.na(age_death)) %>%
   as.data.frame()
 # Add harmonised case-control status
@@ -580,12 +582,6 @@ RESIDUAL.SVA.GENE_EXPRESSION = RESIDUAL.SVA.GENE_EXPRESSION +
   VOOM.SVA.FIT$coefficients[,varsToAddIn] %*% t(VOOM.SVA.FIT$design[,varsToAddIn])
 ```
 
-### Save Environment and SVA.GENE_EXPRESSION
-```{r SAVE and Wrap, eval = F}
-save.image("ROSMAP.RData")
-write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = "ROSMAP_SVA_Diagnosis_Corrected.tsv", row.names = T, col.names = T, sep ="\t", quote=F)
-```
-
 ```{r synapse.parameters, include=FALSE, cache=TRUE}
 parentId = 'syn20798011';
 activityName = 'Covariate and Diagnosis Regression';
@@ -741,6 +737,6 @@ stopCluster(cl)
 library(synapseClient)
 library(knit2synapse) # get the package from devtools::install_github('Sage-Bionetworks/knit2synapse')
 synapseLogin()
-knit2synapse::knitfile2synapse(file = "./ROSMAP_RegressDiagnosis_4_TWAS.Rmd",
-                                 owner = "syn20798014")
+knit2synapse::knitfile2synapse(file = "~/TWAS/code/ROSMAP_RegressDiagnosis_4_TWAS.Rmd",
+                                 owner = "syn20800296")
 ```
