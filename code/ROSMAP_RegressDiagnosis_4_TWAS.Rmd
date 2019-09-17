@@ -128,6 +128,7 @@ rownames(GENE.GC) = GENE.GC$ensembl_gene_id
 ### Data preprocessing
 ```{r preprocess.data, cache=TRUE}
 # Remove samples with no cogdx, RIN, PMI scores and age_death
+names(METADATA)[13] <- "PF_ALIGNED_BASES_alt"
 METADATA <- METADATA %>%
   ungroup %>%
   dplyr::filter(Sampleid %in% colnames(COUNT)) %>%
