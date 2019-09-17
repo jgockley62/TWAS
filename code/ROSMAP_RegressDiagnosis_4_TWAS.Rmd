@@ -587,7 +587,7 @@ write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = "ROSMAP_SVA_Diagnosis_Corrected
 ```
 
 ```{r synapse.parameters, include=FALSE, cache=TRUE}
-parentId = 'syn20798014';
+parentId = 'syn20798011';
 activityName = 'Covariate and Diagnosis Regression';
 activityDescription = 'Covariate analysis and Regrsison of AD Diagnosis of aligned effective counts with GRCh37 with CQN normalisation (DLPFC)';
 thisFileName <- 'ROSMAP_RegressDiagnosis_4_TWAS.Rmd'
@@ -602,7 +602,7 @@ activityName = 'Covariate and Diagnosis Regression';
 activityDescription = 'Covariate analysis and Regrsison of AD Diagnosis of aligned effective counts with GRCh37 with CQN normalisation (DLPFC)';
 
 # Code WTF is this??
-CODE <- Folder(name = "DLPFC - RSEM - EXPECTED COUNTS - GRCh37 - CQN - SVAandDiagnosisRegress - JKG", parentId = parentId)
+CODE <- Folder(name = "ROSMAP", parentId = parentId)
 CODE <- synStore(CODE)
 
 #Set Used SynIDs For Provenance
