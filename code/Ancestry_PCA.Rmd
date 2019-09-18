@@ -22,6 +22,7 @@ knitr::opts_chunk$set(
 ```{bash pull_1000Genomes, echo=FALSE}
 CORES=$(nproc)
 
+#ID Sample list of needed Ref Populations
 wget ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/phase1/analysis_results/integrated_call_sets/integrated_call_samples.20101123.ALL.panel
 
 grep CEU integrated_call_samples.20101123.ALL.panel | cut -f1 > CEU.samples.list
@@ -29,12 +30,18 @@ grep YRI integrated_call_samples.20101123.ALL.panel | cut -f1 > YRI.samples.list
 grep CHB integrated_call_samples.20101123.ALL.panel | cut -f1 > CHB.samples.list
 grep JPT integrated_call_samples.20101123.ALL.panel | cut -f1 > JPT.samples.list
 
-tar -xvf phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz.tgz
-
 for i in {1..22}
 do
-    tabix -p vcf chr$i\.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz
+    wget ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/phase1/analysis_results/integrated_call_sets/ALL.chr1.integrated_phase$i\_v3.20101123.snps_indels_svs.genotypes.vcf.gz
+     wget ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/phase1/analysis_results/integrated_call_sets/ALL.chr1.integrated_phase$i\_v3.20101123.snps_indels_svs.genotypes.vcf.gz.tbi
+    #tabix -p vcf chr$i\.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz
 done
+
+```
+
+#tar -xvf phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz.tgz
+
+
 
 bcftools concat --threads $CORES chr22.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr21.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr20.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr19.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr18.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr17.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr16.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr15.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr14.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr13.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr12.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr9.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr11.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr10.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr8.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr7.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr6.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr5.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr4.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr3.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr2.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr1.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz -O z > phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz
 
