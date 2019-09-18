@@ -1,0 +1,105 @@
+---
+title: "Process Genotypes For Ancestry Analysis"
+author: "JKG"
+date: "9/18/2019"
+output: pdf_document
+  chunk_output_type: console
+---
+
+```{r libs, include=FALSE}
+knitr::opts_chunk$set(
+  echo=FALSE,
+  warning=FALSE,
+  message=FALSE,
+  error = FALSE,
+  tidy = FALSE,
+  cache = TRUE)
+
+```
+
+## Pull 1000Genomes down and process
+* Pull out reference populations (CEU, YRI, CHB, JPT)
+```{bash pull_1000Genomes, echo=FALSE}
+CORES=$(nproc)
+
+wget ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/phase1/analysis_results/integrated_call_sets/integrated_call_samples.20101123.ALL.panel
+
+grep CEU integrated_call_samples.20101123.ALL.panel | cut -f1 > CEU.samples.list
+grep YRI integrated_call_samples.20101123.ALL.panel | cut -f1 > YRI.samples.list
+grep CHB integrated_call_samples.20101123.ALL.panel | cut -f1 > CHB.samples.list
+grep JPT integrated_call_samples.20101123.ALL.panel | cut -f1 > JPT.samples.list
+
+tar -xvf phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz.tgz
+
+for i in {1..22}
+do
+    tabix -p vcf chr$i\.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz
+done
+
+bcftools concat --threads $CORES chr22.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr21.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr20.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr19.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr18.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr17.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr16.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr15.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr14.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr13.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr12.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr9.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr11.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr10.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr8.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr7.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr6.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr5.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr4.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr3.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr2.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr1.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz -O z > phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz
+
+rm chr*.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz
+
+plink --vcf phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz --threads $CORES --make-bed --out 1000Genomes
+rm phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz
+
+###Takeout INDV for PCA Population
+cat CEU.samples.list YRI.samples.list CHB.samples.list JPT.samples.list > 1000G_IDV.list
+paste 1000G_IDV.list 1000G_IDV.list > foo.txt;
+mv foo.txt 1000G_IDV.list
+
+rm *.samples.list; 
+
+plink --threads $CORES --bfile 1000Genomes --snps-only --keep 1000G_IDV.list --make-bed --out INDV_1000G_Pops
+rm 1000Genomes.*
+```
+
+## Process MSBB WGS Data
+* Pull VCFs from Synapse
+* Convert to plink
+* Merge across chromosomes
+* Filter for 1000G SNPs
+```{bash ProcessMSBB, echo=FALSE}
+CORES=$(nproc)
+##Pull VCF Files from Synapse
+synapse get -r syn11707204 --downloadLocation VCF/
+
+##Convert VCFs to plink
+mkdir GWAS_Plink
+
+for i in {22..1}
+do
+  vcftools --gzvcf VCF/NIA_JG_1898_samples_GRM_WGS_b37_JointAnalysis01_2017-12-08_$i.recalibrated_variants.MSSM.vcf.gz --plink --out GWAS_Plink/MSSB_Chr_$i
+
+  rm VCF/NIA_JG_1898_samples_GRM_WGS_b37_JointAnalysis01_2017-12-08_$i.recalibrated_variants.MSSM.vcf.gz
+
+  plink --file GWAS_Plink/MSSB_Chr_$i --threads $CORES --make-bed --out GWAS_Plink/MSSB_Chr_$i
+
+  rm GWAS_Plink/*$i.ped
+  rm GWAS_Plink/*$i.map
+done
+
+rm GWAS_Plink/*.tbi
+
+##Merge Chromsomes in Plink Format 
+for i in {2..22} 
+do 
+    echo GWAS_Plink/MSSB_Chr_$i >> MergedGWAS.txt
+done 
+plink --threads $CORES --bfile GWAS_Plink/MSSB_Chr_1 --merge-list MergedGWAS.txt --make-bed --allow-no-sex --out GWASTotal
+rm -r WGS_Plink/
+
+#Write SNP List for LDREF Data
+#plink --threads $CORES --bfile INDV_1000G_Pops --write-snplist --out LDREF_SNPs
+
+#Reformat SNP List for plink filter.txt
+ awk '{ print $1"\t"$4"\t"$4"\t"$2 }' INDV_1000G_Pops.bim > LDREF_SNPs.txt
+
+##Filter for SNPs in 1000G - LDREF_FiltSNPs
+plink --threads $CORES --bfile GWASTotal --extract LDREF_SNPs.txt --make-bed --allow-no-sex --out MSBB_LDREF_FiltSNPs
+
+#Rename Snps with rsIDs & Centimorgan Distance
+#python BimAnotator.py TotalLDRef.bim LDREF_FiltSNPs.bim
+```
+
+

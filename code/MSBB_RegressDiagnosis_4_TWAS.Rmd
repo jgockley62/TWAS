@@ -1,6 +1,7 @@
 ---
-title: Covariate and differential expression analysis of MSSM reprocessed counts
-author: Thanneer Perumal
+title: Covariate and analysis of MSSM reprocessed counts Regressing out Diagnosis as well for TWAS
+author: 'JKG - Adapted from: Thanneer Perumal'
+output: html_notebook
 editor_options:
   chunk_output_type: console
 ---
@@ -36,9 +37,9 @@ cl = makeCluster(detectCores()-2)
 registerDoParallel(cl)
 options(xtable.type="html")
 # Source modified utility functions from limma and sva package
-source('./utilityFunctions/parallelDuplicateCorrelation.R')
-source('./utilityFunctions/irwsva.build.R')
-source('./utilityFunctions/f.pvalue.R')
+source('../utilityFunctions/parallelDuplicateCorrelation.R')
+source('../utilityFunctions/irwsva.build.R')
+source('../utilityFunctions/f.pvalue.R')
 knitr::opts_chunk$set(
   echo=FALSE,
   warning=FALSE,
@@ -118,7 +119,7 @@ rownames(GENE.GC) = GENE.GC$ensembl_gene_id
 ```
 
 ### Data preprocessing
-```{r preprocess.data,cache=FALSE, echo=TRUE}
+```{r preprocess.data,cache=FALSE, echo=FALSE}
 # Choose samples with rRNA rate less than 5% and more PF_READS_ALIGNED
 METADATA = as_tibble(METADATA, .name_repair = "unique") %>%
   plyr::ddply(.(barcode), .fun = function(x){
@@ -190,12 +191,12 @@ COVARIATES[,ContCovariates] = lapply(COVARIATES[,ContCovariates], as.character)
 COVARIATES[,ContCovariates] = lapply(COVARIATES[,ContCovariates], as.numeric)
 ```
 Correlation/association between covariates at an FDR <= 0.1
-```{r covariates.correlation, fig.width=10, fig.height=6}
+```{r covariates.correlation, cache=FALSE, fig.width=10, fig.height=6}
 COVARIATES.CORRELATION = getAssociationStatistics(COVARIATES, PVAL = 0.05)
 draw(COVARIATES.CORRELATION$plot, heatmap_legend_side = 'left', padding  = unit(c(18,2,2,18), 'mm'))
 ```
 ### Explore metadata
-```{r data.explore, fig.width = 12, fig.height = 8}
+```{r data.explore, cache=FALSE, fig.width = 12, fig.height = 8}
 my.theme = theme(legend.position = 'top', axis.text.x = element_text(angle = 90, hjust = 1))
 # RIN
 p = list()
@@ -335,7 +336,7 @@ NEW.COUNTS = (2^LOG.CPM) * t(replicate(dim(LOG.CPM)[1], LIB.SIZE))/1e6
 ```
 ### Sample clustering
 PCA based clustering of samples
-```{r decompse.normalise.data1.1, fig.height=5, fig.width=10, results='asis'}
+```{r decompse.normalise.data1.1, cache=FALSE, fig.height=5, fig.width=10, results='asis'}
 # Find principal components of expression to plot
 PC <- prcomp(CQN.GENE_EXPRESSION$E.no.na, scale.=T, center = T)
 # Plot first 2 PCs
@@ -351,7 +352,7 @@ p <- p + theme_bw() + theme(legend.position="right") + facet_grid(.~Region, scal
 p
 ```
 Tree based classification of samples
-```{r decompse.normalise.data1.2, fig.height=6, fig.width=10, results='asis'}
+```{r decompse.normalise.data1.2, cache=FALSE, fig.height=6, fig.width=10, results='asis'}
 # Eucledian tree based analysis
 COVARIATES.tmp = (COVARIATES[,c(FactorCovariates), drop = F])
 COVARIATES.tmp[is.na(COVARIATES.tmp)] = 0
@@ -382,7 +383,7 @@ preAdjustedSigCovars = runPCAandPlotCorrelations(CQN.GENE_EXPRESSION$E.no.na,
 ```
 
 Significant covariates to adjust at FDR 0.1 are `r preAdjustedSigCovars$significantCovars`
-```{r preadj.covariates.plot, fig.width=12, fig.height=8}
+```{r preadj.covariates.plot, cache=FALSE, fig.width=12, fig.height=8}
 preAdjustedSigCovars[["PC_res"]][[2]]$plotData
 ```
 
@@ -471,7 +472,7 @@ tmp <- paste('Using following covariates in the final model:', modelStr)
 `r tmp`
 
 ### Sanity check
-```{r residual.adj, fig.width=12, fig.height=8}
+```{r residual.adj, cache=FALSE, fig.width=12, fig.height=8}
 # Find PC of residual gene expression and significant covariates that are highly correlated with PCs
 residualSigCovars = runPCAandPlotCorrelations(expr, 
                                               COVARIATES,
@@ -485,7 +486,7 @@ cr = cor(t(expr))
 hist(cr, main = 'Distribution of correlation between genes', xlab = 'Correlation')
 ```
 PCA of residual data
-```{r decompse.normalise.data2.1, fig.height=6, fig.width=10, results='asis'}
+```{r decompse.normalise.data2.1, cache=FALSE, fig.height=6, fig.width=10, results='asis'}
 # Find principal components of expression to plot
 PC <- prcomp(expr, scale.=T, center = T)
 # Plot first 2 PCs
@@ -501,7 +502,7 @@ p <- p + theme_bw() + theme(legend.position="right") + facet_grid(.~Region, scal
 p
 ```
 Tree based clustering of residual data
-```{r decompse.normalise.data2.2, fig.height=8, fig.width=12, results='asis'}
+```{r decompse.normalise.data2.2, cache=FALSE, fig.height=8, fig.width=12, results='asis'}
 # Eucledian tree based analysis
 COVARIATES.tmp = data.matrix(COVARIATES[,FactorCovariates])
 COVARIATES.tmp[is.na(COVARIATES.tmp)] = 0
@@ -536,7 +537,7 @@ RESIDUAL.NET.GENE_EXPRESSION = residuals.MArrayLM(VOOM.NET.FIT,
 
 ### SVA Adjustments for eQTL analysis
 Conditioned on primary variable (Tissue.Diagnosis) and identified covariates estimate surrogate variables using SVA package
-```{r sva.adjust}
+```{r sva.adjust, cache=FALSE}
 # Get design matrix
 DESIGN = getDesignMatrix(COVARIATES[, c(primaryVariable[2], postAdjustCovars), drop = F], Intercept = F)
 DESIGN$design = DESIGN$design[,linColumnFinder(DESIGN$design)$indepCols]
@@ -752,9 +753,10 @@ stopCluster(cl)
 [Github](`r thisFile`)
 
 ```{r knitmd, eval=FALSE, cache=FALSE, include=FALSE}
-library(synapseClient)
+library(synapser)
 library(knit2synapse) # get the package from devtools::install_github('Sage-Bionetworks/knit2synapse')
 synLogin()
-knit2synapse::knitfile2synapse(file = "~/TWAS/code/MSBB_RegressDiagnosis_4_TWAS.Rmd",
-                                 owner = "syn20798012")
+knit2synapse::createAndKnitToFolderEntity(file = "/home/jgockley/TWAS/code/MSBB_RegressDiagnosis_4_TWAS.Rmd",
+                                          parentId ="syn20798011",
+                                          folderName = 'MSBB')
 ```
