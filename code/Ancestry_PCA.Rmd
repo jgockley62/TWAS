@@ -35,7 +35,12 @@ grep YRI integrated_call_samples.20101123.ALL.panel | cut -f1 > YRI.samples.list
 grep CHB integrated_call_samples.20101123.ALL.panel | cut -f1 > CHB.samples.list
 grep JPT integrated_call_samples.20101123.ALL.panel | cut -f1 > JPT.samples.list
 
-#i=22
+#Make Plink IDV List of all 1000G Ref Samps to pull
+cat CEU.samples.list YRI.samples.list CHB.samples.list JPT.samples.list > 1000G_IDV.list
+paste 1000G_IDV.list 1000G_IDV.list > foo.txt
+mv foo.txt 1000G_IDV.list
+
+#Pull 1000G Data, convert to plink, Filt for INDV and SNPs
 for i in {1..22}
 do
 	wget ftp://ftp-trace.ncbi.nih.gov/1000genomes/ftp/phase1/analysis_results/integrated_call_sets/ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf.gz
@@ -45,19 +50,18 @@ do
 
     plink --vcf ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf --snps-only --keep 1000G_IDV.list --threads $CORES --make-bed --out 1000Genomes_chr$i
   rm ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf
-
 done
 
-#Merge All Plink Files into genome wide
+#Merge All Plink Chr Files 
 for i in {2..22}
 do
-  echo 1000Genomes_chr$i >> Merge.List
+  echo 1000Genomes_chr$i >> Merge.list
 done
 
-plink --bfile 1000Genomes_chr1 --merge-list Merge.List --make-bed --out 1000Genomes_Merged
+plink --bfile 1000Genomes_chr1 --merge-list Merge.list --make-bed --out 1000Genomes_Merged
+
 rm 1000Genomes_chr*
-
-
+rm *.list
 ```
 
 ###Takeout INDV for PCA Population
