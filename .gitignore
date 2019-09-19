@@ -2,5 +2,4 @@ prettify
 plink_linux_x86_64_20190617.zip
 LICENSE
 plink/*
-plink
-plink*
+bin/
