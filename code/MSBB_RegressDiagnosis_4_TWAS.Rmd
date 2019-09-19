@@ -33,6 +33,8 @@ library(synapser)
 library(knitr)
 library(doParallel)
 library(foreach)
+library(githubr)
+
 cl = makeCluster(detectCores()-2)
 registerDoParallel(cl)
 options(xtable.type="html")

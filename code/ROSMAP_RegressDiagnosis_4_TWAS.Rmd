@@ -1,6 +1,5 @@
 ---
 title: Covariate Analysis of ROSMAP Reprocessed counts Regressing out Diagnosis as well for TWAS
-
 author: 'JKG - Adapted from: Thanneer Perumal'
 output: html_notebook
 editor_options:
@@ -35,6 +34,8 @@ library(synapser)
 library(knitr)
 library(doParallel)
 library(foreach)
+library(githubr)
+
 cl = makeCluster(detectCores()-2)
 registerDoParallel(cl)
 options(xtable.type="html")
