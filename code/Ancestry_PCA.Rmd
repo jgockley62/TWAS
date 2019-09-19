@@ -44,12 +44,9 @@ mv foo.txt 1000G_IDV.list
 for i in {1..22}
 do
 	wget ftp://ftp-trace.ncbi.nih.gov/1000genomes/ftp/phase1/analysis_results/integrated_call_sets/ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf.gz
-    
-    gunzip ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf.gz
-    rm ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf.gz
 
-    plink --vcf ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf --snps-only --keep 1000G_IDV.list --threads $CORES --make-bed --out 1000Genomes_chr$i
-  rm ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf
+    plink --vcf ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf.gz --snps-only --keep 1000G_IDV.list --threads $CORES --make-bed --out 1000Genomes_chr$i
+  rm ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf.gz
 done
 
 #Merge All Plink Chr Files 
@@ -62,17 +59,8 @@ plink --bfile 1000Genomes_chr1 --merge-list Merge.list --make-bed --out 1000Geno
 
 rm 1000Genomes_chr*
 rm *.list
-```
+rm *.panel
 
-###Takeout INDV for PCA Population
-cat CEU.samples.list YRI.samples.list CHB.samples.list JPT.samples.list > 1000G_IDV.list
-paste 1000G_IDV.list 1000G_IDV.list > foo.txt;
-mv foo.txt 1000G_IDV.list
-
-rm *.samples.list; 
-
-plink --threads $CORES --bfile 1000Genomes --snps-only --keep 1000G_IDV.list --make-bed --out INDV_1000G_Pops
-rm 1000Genomes.*
 ```
 
 ## Process MSBB WGS Data
@@ -83,6 +71,7 @@ rm 1000Genomes.*
 ```{bash ProcessMSBB, echo=FALSE}
 CORES=$(nproc)
 ##Pull VCF Files from Synapse
+mkdir VCF
 synapse get -r syn11707204 --downloadLocation VCF/
 
 ##Convert VCFs to plink
@@ -94,7 +83,7 @@ do
 
   rm VCF/NIA_JG_1898_samples_GRM_WGS_b37_JointAnalysis01_2017-12-08_$i.recalibrated_variants.MSSM.vcf.gz
 
-  plink --file GWAS_Plink/MSSB_Chr_$i --threads $CORES --make-bed --out GWAS_Plink/MSSB_Chr_$i
+  plink --file GWAS_Plink/MSSB_Chr_$i --threads $CORES --make-bed --allow-no-sex --snps-only --out GWAS_Plink/MSSB_Chr_$i
 
   rm GWAS_Plink/*$i.ped
   rm GWAS_Plink/*$i.map
