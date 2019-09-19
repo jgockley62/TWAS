@@ -40,26 +40,51 @@ cat CEU.samples.list YRI.samples.list CHB.samples.list JPT.samples.list > 1000G_
 paste 1000G_IDV.list 1000G_IDV.list > foo.txt
 mv foo.txt 1000G_IDV.list
 
+##Pull The LDREF Panel SNPS
+#Pull LDREF Data
+wget https://data.broadinstitute.org/alkesgroup/FUSION/LDREF.tar.bz2
+tar xjvf LDREF.tar.bz2
+
+#Merge  LDREF Data
+for i in {2..22} 
+do 
+    echo LDREF/1000G.EUR.$i>> MergedChrs.txt
+done 
+plink --bfile LDREF/1000G.EUR.1 --threads $CORES --merge-list MergedChrs.txt --make-bed --allow-no-sex --out TotalLDRef
+
+#Write SNP List for LDREF Data
+plink --threads $CORES --bfile TotalLDRef --write-snplist --out LDREF_SNPs
+
+#Reformat SNP List for plink filter.txt
+ awk '{ print $1"\t"$4"\t"$4"\t"$2 }' TotalLDRef.bim > LDREF_SNPs.txt
+
+rm -r LDREF/
+
 #Pull 1000G Data, convert to plink, Filt for INDV and SNPs
 for i in {1..22}
+#for i in {20..22}
 do
 	wget ftp://ftp-trace.ncbi.nih.gov/1000genomes/ftp/phase1/analysis_results/integrated_call_sets/ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf.gz
 
-    plink --vcf ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf.gz --snps-only --keep 1000G_IDV.list --threads $CORES --make-bed --out 1000Genomes_chr$i
+    plink --vcf ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf.gz --snps-only --extract LDREF_SNPs.txt --keep 1000G_IDV.list --threads $CORES --make-bed --out 1000Genomes_chr$i
   rm ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf.gz
 done
 
 #Merge All Plink Chr Files 
 for i in {2..22}
+#for i in {21..22}
 do
   echo 1000Genomes_chr$i >> Merge.list
 done
 
-plink --bfile 1000Genomes_chr1 --merge-list Merge.list --make-bed --out 1000Genomes_Merged
+#_#plink --bfile 1000Genomes_chr1 --merge-list Merge.list --make-bed --out 1000Genomes_Merged
+plink --bfile 1000Genomes_chr20 --merge-list Merge.list --make-bed --out 1000Genomes_Merged
 
-rm 1000Genomes_chr*
+#rm 1000Genomes_chr*
 rm *.list
 rm *.panel
+rm LDREF.tar.bz2
+rm MergedChrs.txt
 
 ```
 
@@ -99,11 +124,18 @@ done
 plink --threads $CORES --bfile GWAS_Plink/MSSB_Chr_1 --merge-list MergedGWAS.txt --make-bed --allow-no-sex --out GWASTotal
 rm -r WGS_Plink/
 
+#Merge  LDREF Data
+for i in {2..22} 
+do 
+    echo LDREF/1000G.EUR.$i>> MergedChrs.txt
+done 
+plink --bfile LDREF/1000G.EUR.1 --threads $CORES --merge-list MergedChrs.txt --make-bed --allow-no-sex --out TotalLDRef
+
 #Write SNP List for LDREF Data
 #plink --threads $CORES --bfile INDV_1000G_Pops --write-snplist --out LDREF_SNPs
 
 #Reformat SNP List for plink filter.txt
- awk '{ print $1"\t"$4"\t"$4"\t"$2 }' INDV_1000G_Pops.bim > LDREF_SNPs.txt
+awk '{ print $1"\t"$4"\t"$4"\t"$2 }' 1000Genomes_Merged.bim > LDREF_SNPs.txt
 
 ##Filter for SNPs in 1000G - LDREF_FiltSNPs
 plink --threads $CORES --bfile GWASTotal --extract LDREF_SNPs.txt --make-bed --allow-no-sex --out MSBB_LDREF_FiltSNPs
@@ -112,4 +144,45 @@ plink --threads $CORES --bfile GWASTotal --extract LDREF_SNPs.txt --make-bed --a
 #python BimAnotator.py TotalLDRef.bim LDREF_FiltSNPs.bim
 ```
 
+## ReName the MSBB SNPS so the can be combined
+```{python ReNamer}
+import sys
+import os
+import re
 
+###This Script reannotates bim file name from a snp list
+#Usage:
+# python BimAnotator.py TotalLDRef.bim LDREF_FiltSNPs.bim
+
+InFile = TotalLDRef.bim       #sys.argv[1];
+#Gene_Annots/hg19/Merged_hg19_Filt_ENGS.bed
+InFileb = LDREF_FiltSNPs.bim  #sys.argv[2];
+
+RS_IDs = {}
+RS_Pos = {}
+
+F1 = open(InFile)
+for line in F1:
+	LINE = line.rstrip('\r\n')
+	lst = LINE.split('\t')
+
+	RS_IDs[ ''.join([lst[0], '_', lst[3]]) ] = lst[1]
+	RS_Pos[ ''.join([lst[0], '_', lst[3]]) ] = lst[2]
+F1.close()
+
+#Open Output
+OUT = open( ''.join([ InFileb.replace(".bim", ""), 'Renamed.bim']), 'w' )
+
+F1 = open(InFileb)
+for line in F1:
+	LINE = line.rstrip('\r\n')
+	lst = LINE.split('\t')
+
+	Name = RS_IDs[ ''.join([ lst[0], "_", lst[3] ])]
+	Post = RS_Pos[ ''.join([ lst[0], "_", lst[3] ])]
+
+	Entry = '\t'.join([ lst[0], Name, Post, lst[3], lst[4], lst[5] ])
+	print >>OUT, Entry
+
+F1.close()
+```
