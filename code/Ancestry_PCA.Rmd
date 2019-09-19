@@ -20,35 +20,45 @@ knitr::opts_chunk$set(
 ## Pull 1000Genomes down and process
 * Pull out reference populations (CEU, YRI, CHB, JPT)
 ```{bash pull_1000Genomes, echo=FALSE}
-CORES=$(nproc)
+source ~/.bashrc
+PATH=$PATH:/home/jgockley/TWAS/bin/
+
+CORES=`expr $(nproc) - 2`
 
 #ID Sample list of needed Ref Populations
-wget ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/phase1/analysis_results/integrated_call_sets/integrated_call_samples.20101123.ALL.panel
+wget ftp://ftp-trace.ncbi.nih.gov/1000genomes/ftp/phase1/analysis_results/integrated_call_sets/integrated_call_samples.20101123.ALL.panel
+
+ftp://ftp-trace.ncbi.nih.gov/1000genomes/ftp/phase1/analysis_results/integrated_call_sets/
 
 grep CEU integrated_call_samples.20101123.ALL.panel | cut -f1 > CEU.samples.list
 grep YRI integrated_call_samples.20101123.ALL.panel | cut -f1 > YRI.samples.list
 grep CHB integrated_call_samples.20101123.ALL.panel | cut -f1 > CHB.samples.list
 grep JPT integrated_call_samples.20101123.ALL.panel | cut -f1 > JPT.samples.list
 
+#i=22
 for i in {1..22}
 do
-    wget ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/phase1/analysis_results/integrated_call_sets/ALL.chr1.integrated_phase$i\_v3.20101123.snps_indels_svs.genotypes.vcf.gz
-     wget ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/phase1/analysis_results/integrated_call_sets/ALL.chr1.integrated_phase$i\_v3.20101123.snps_indels_svs.genotypes.vcf.gz.tbi
-    #tabix -p vcf chr$i\.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz
+	wget ftp://ftp-trace.ncbi.nih.gov/1000genomes/ftp/phase1/analysis_results/integrated_call_sets/ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf.gz
+    
+    gunzip ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf.gz
+    rm ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf.gz
+
+    plink --vcf ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf --snps-only --keep 1000G_IDV.list --threads $CORES --make-bed --out 1000Genomes_chr$i
+  rm ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf
+
 done
 
+#Merge All Plink Files into genome wide
+for i in {2..22}
+do
+  echo 1000Genomes_chr$i >> Merge.List
+done
+
+plink --bfile 1000Genomes_chr1 --merge-list Merge.List --make-bed --out 1000Genomes_Merged
+rm 1000Genomes_chr*
+
+
 ```
-
-#tar -xvf phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz.tgz
-
-
-
-bcftools concat --threads $CORES chr22.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr21.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr20.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr19.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr18.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr17.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr16.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr15.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr14.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr13.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr12.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr9.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr11.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr10.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr8.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr7.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr6.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr5.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr4.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr3.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr2.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz chr1.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz -O z > phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz
-
-rm chr*.phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz
-
-plink --vcf phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz --threads $CORES --make-bed --out 1000Genomes
-rm phase1_release_v3.20101123.snps_indels_svs.genotypes.refpanel.ALL.vcf.gz
 
 ###Takeout INDV for PCA Population
 cat CEU.samples.list YRI.samples.list CHB.samples.list JPT.samples.list > 1000G_IDV.list
