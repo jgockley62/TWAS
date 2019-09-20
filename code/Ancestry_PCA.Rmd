@@ -22,6 +22,7 @@ knitr::opts_chunk$set(
 ```{bash pull_1000Genomes, echo=FALSE}
 source ~/.bashrc
 PATH=$PATH:/home/jgockley/TWAS/bin/
+#PATH=$PATH:TWAS/bin/
 CORES=`expr $(nproc) - 2`
 
 #ID Sample list of needed Ref Populations
@@ -68,7 +69,6 @@ do
   rm ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf.gz
 done
 ```
-
 ```{bash FOO}
 source ~/.bashrc
 PATH=$PATH:/home/jgockley/TWAS/bin/
@@ -358,6 +358,40 @@ grep '.' ROSMAPTotal.bim | wc -l
 ##Merge the Genotype Sets and Preform PCA
 ```{bash MergeAndCall}
 
+
+
+```
+
+##Plot PCA
+```{r PlotPCA}
+
+
+
+```
+
+## Cluster Based on Ancestry
+```{bash CLustPrep}
+plink --bfile Final_Merge --threads 32 --geno 0.0000001 --recode12 --compound-genotypes --out AllSnps4GemClust
+#777864
+
+
+#Remove non-snp data in the ped file
+awk '{$1=$2=$3=$4=$5=$6=""; print $0}' AllSnps4GemClust.ped > foo.txt
+perl -pe 's/([^\s]+)\s+([^\s]+)/$1$2/g' foo.txt > poo.txt
+awk '{ print $1"_"$2 }' AllSnps4GemClust.ped > foo.txt
+paste foo.txt poo.txt > AllGenos4GemClust.txt
+
+
+cp poo.txt test.txt
+sed -i 's/22/2/g' test.txt
+sed -i 's/00/3/g' test.txt
+sed -i 's/12/1/g' test.txt
+sed -i 's/11/0/g' test.txt
+
+
+paste foo.txt test.txt > AllGenos4GemClust.txt
+sed -i 's/\t/ /g' AllGenos4GemClust.txt
+sed -i 's/  */ /g' AllGenos4GemClust.txt
 
 
 ```
