@@ -19,7 +19,7 @@ knitr::opts_chunk$set(
 
 ## Pull 1000Genomes down and process
 * Pull out reference populations (CEU, YRI, CHB, JPT)
-```{bash pull_1000Genomes, echo=FALSE}
+```{bash pull_1000Genomes, cache = FALSE, echo=FALSE}
 source ~/.bashrc
 PATH=$PATH:/home/jgockley/TWAS/bin/
 #PATH=$PATH:TWAS/bin/
@@ -68,11 +68,6 @@ do
     plink --vcf ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf.gz --snps-only --extract LDREF_SNPs.txt --keep 1000G_IDV.list --silent --threads $CORES --make-bed --out 1000Genomes_chr$i
   rm ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf.gz
 done
-```
-```{bash FOO}
-source ~/.bashrc
-PATH=$PATH:/home/jgockley/TWAS/bin/
-CORES=`expr $(nproc) - 2`
 
 #Merge All Plink Chr Files 
 for i in {2..22}
@@ -94,7 +89,7 @@ rm MergedChrs.txt
 * Convert to plink
 * Merge across chromosomes
 * Filter for 1000G SNPs
-```{bash ProcessMSBB, echo=FALSE}
+```{bash ProcessMSBB, cache = FALSE, echo=FALSE}
 source ~/.bashrc
 PATH=$PATH:/home/jgockley/TWAS/bin/
 CORES=`expr $(nproc) - 2`
@@ -186,7 +181,7 @@ F1.close()
 ```
 
 ### Finalize the MSBB LD SNP-Set Derived from WGS
-```{bash FinalizeMSBB }
+```{bash FinalizeMSBB, cache = FALSE  }
 source ~/.bashrc
 PATH=$PATH:/home/jgockley/TWAS/bin/
 CORES=`expr $(nproc) - 2`
@@ -204,7 +199,7 @@ grep '.' MSBB_LDREF_FiltSNPs.bim | wc -l
 ```
 
 ## Process MAYO Genotyping Data
-```{bash MAYO}
+```{bash MAYO, cache = FALSE}
 source ~/.bashrc
 PATH=$PATH:/home/jgockley/TWAS/bin/
 CORES=`expr $(nproc) - 2`
@@ -268,7 +263,7 @@ F1.close()
 ```
 
 ### Finalize the Mayo LD SNP-Set Derived from imputed genotyping
-```{bash CheckMayo}
+```{bash CheckMayo, cache = FALSE}
 source ~/.bashrc
 PATH=$PATH:/home/jgockley/TWAS/bin/
 CORES=`expr $(nproc) - 2`
@@ -284,7 +279,7 @@ grep '.' Mayo_LDREF_Filt.bim | wc -l
 ```
 
 ## Process ROSMAP Genotyping Data
-```{bash DosageToHardCalls}
+```{bash DosageToHardCalls, cache = FALSE}
 source ~/.bashrc
 PATH=$PATH:/home/jgockley/TWAS/bin/
 CORES=`expr $(nproc) - 2`
@@ -356,21 +351,21 @@ grep '.' ROSMAPTotal.bim | wc -l
 ```
 
 ##Merge the Genotype Sets and Preform PCA
-```{bash MergeAndCall}
+```{bash MergeAndCall, cache = FALSE}
 
 
 
 ```
 
 ##Plot PCA
-```{r PlotPCA}
+```{r PlotPCA, cache = FALSE}
 
 
 
 ```
 
 ## Cluster Based on Ancestry
-```{bash CLustPrep}
+```{bash CLustPrep, cache = FALSE}
 plink --bfile Final_Merge --threads 32 --geno 0.0000001 --recode12 --compound-genotypes --out AllSnps4GemClust
 #777864
 
