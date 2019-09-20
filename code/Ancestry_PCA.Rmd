@@ -13,8 +13,8 @@ knitr::opts_chunk$set(
   message=FALSE,
   error = FALSE,
   tidy = FALSE,
-  cache = TRUE)
-
+  cache = TRUE,
+  results='hide')
 ```
 
 ## Pull 1000Genomes down and process
@@ -22,7 +22,6 @@ knitr::opts_chunk$set(
 ```{bash pull_1000Genomes, echo=FALSE}
 source ~/.bashrc
 PATH=$PATH:/home/jgockley/TWAS/bin/
-
 CORES=`expr $(nproc) - 2`
 
 #ID Sample list of needed Ref Populations
@@ -50,13 +49,13 @@ for i in {2..22}
 do 
     echo LDREF/1000G.EUR.$i>> MergedChrs.txt
 done 
-plink --bfile LDREF/1000G.EUR.1 --threads $CORES --merge-list MergedChrs.txt --make-bed --allow-no-sex --out TotalLDRef
+plink --bfile LDREF/1000G.EUR.1 --threads $CORES --silent --merge-list MergedChrs.txt --make-bed --allow-no-sex --out TotalLDRef
 
 #Write SNP List for LDREF Data
-plink --threads $CORES --bfile TotalLDRef --write-snplist --out LDREF_SNPs
+plink --threads $CORES --bfile TotalLDRef --silent --write-snplist --out LDREF_SNPs
 
 #Reformat SNP List for plink filter.txt
- awk '{ print $1"\t"$4"\t"$4"\t"$2 }' TotalLDRef.bim > LDREF_SNPs.txt
+awk '{ print $1"\t"$4"\t"$4"\t"$2 }' TotalLDRef.bim > LDREF_SNPs.txt
 
 rm -r LDREF/
 
@@ -65,9 +64,15 @@ for i in {1..22}
 do
 	wget ftp://ftp-trace.ncbi.nih.gov/1000genomes/ftp/phase1/analysis_results/integrated_call_sets/ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf.gz
 
-    plink --vcf ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf.gz --snps-only --extract LDREF_SNPs.txt --keep 1000G_IDV.list --threads $CORES --make-bed --out 1000Genomes_chr$i
+    plink --vcf ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf.gz --snps-only --extract LDREF_SNPs.txt --keep 1000G_IDV.list --silent --threads $CORES --make-bed --out 1000Genomes_chr$i
   rm ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf.gz
 done
+```
+
+```{bash FOO}
+source ~/.bashrc
+PATH=$PATH:/home/jgockley/TWAS/bin/
+CORES=`expr $(nproc) - 2`
 
 #Merge All Plink Chr Files 
 for i in {2..22}
@@ -75,7 +80,7 @@ do
   echo 1000Genomes_chr$i >> Merge.list
 done
 
-plink --bfile 1000Genomes_chr1 --merge-list Merge.list --make-bed --out 1000Genomes_Merged
+plink --bfile 1000Genomes_chr1 --merge-list Merge.list --silent --make-bed --out 1000Genomes_Merged
 
 rm 1000Genomes_chr*
 rm *.list
@@ -90,8 +95,9 @@ rm MergedChrs.txt
 * Merge across chromosomes
 * Filter for 1000G SNPs
 ```{bash ProcessMSBB, echo=FALSE}
-CORES=`expr $(nproc) - 2`
+source ~/.bashrc
 PATH=$PATH:/home/jgockley/TWAS/bin/
+CORES=`expr $(nproc) - 2`
 ##Pull VCF Files from Synapse
 mkdir VCF
 synapse get -r syn11707204 --downloadLocation VCF/
@@ -108,7 +114,7 @@ rm VCF/SYNAPSE_METADATA_MANIFEST.tsv
 #Convert to PLINK
 for i in {22..1}
 do
-  plink --vcf VCF/NIA_JG_1898_samples_GRM_WGS_b37_JointAnalysis01_2017-12-08_$i\.recalibrated_variants.MSSM.vcf.gz --threads $CORES --make-bed --allow-no-sex --snps-only --out GWAS_Plink/MSSB_Chr_$i
+  plink --vcf VCF/NIA_JG_1898_samples_GRM_WGS_b37_JointAnalysis01_2017-12-08_$i\.recalibrated_variants.MSSM.vcf.gz --threads $CORES --make-bed --silent --allow-no-sex --snps-only --out GWAS_Plink/MSSB_Chr_$i
   rm VCF/NIA_JG_1898_samples_GRM_WGS_b37_JointAnalysis01_2017-12-08_$i\.recalibrated_variants.MSSM.vcf.*
 done
 rm -r VCF/
@@ -129,63 +135,14 @@ do
     echo GWAS_Plink/MSSB_Chr_$i >> MergedGWAS.txt
 done 
 
-CORES=`expr $(nproc) - 2`
-PATH=$PATH:/home/jgockley/TWAS/bin/
-plink --threads $CORES --bfile GWAS_Plink/MSSB_Chr_1 --merge-list MergedGWAS.txt --extract MSBB_LD_SNPS.txt --make-bed --allow-no-sex --out GWASTotal
-#rm -r WGS_Plink/
-
-#Rename Snps with rsIDs & Centimorgan Distance
-#python BimAnotator.py TotalLDRef.bim LDREF_FiltSNPs.bim
-```
-
-## Process MAYO Genotyping Data
-```{bash MAYO}
-CORES=`expr $(nproc) - 2`
-#Download
-mkdir Mayo
-synapse get -r syn8650955 --downloadLocation Mayo/
-
-plink --bfile Mayo/MayoRNAseq_RNAseq_Genome-Wide_Genotypes_HRCimputed --threads $CORES --extract LDREF_SNPs.txt --range --make-bed --out Mayo_LDREF_Filt
-
-rm -r Mayo/
-#SNPS REMAINING COMPARED TO TOTAL LDREF SET:
-##1,187,249 out of 1,190,321 (  99.74% )
-
-#Rename Snps with rsIDs & Centimorgan Distance
-python BimAnotator.py TotalLDRef.bim Mayo_LDREF_Filt.bim
-mv Mayo_LDREF_FiltRenamed.bim Mayo_LDREF_Filt.bim
-
-```
-
-##Merge Chromsomes in Plink Format 
-for i in {2..22} 
-do 
-    echo GWAS_Plink/MSSB_Chr_$i >> MergedGWAS.txt
-done 
-plink --threads $CORES --bfile GWAS_Plink/MSSB_Chr_1 --merge-list MergedGWAS.txt --make-bed --allow-no-sex --out GWASTotal
+plink --threads $CORES --bfile GWAS_Plink/MSSB_Chr_1 --silent --merge-list MergedGWAS.txt --extract MSBB_LD_SNPS.txt --make-bed --allow-no-sex --out GWASTotal
 rm -r WGS_Plink/
 
-#Merge  LDREF Data
-for i in {2..22} 
-do 
-    echo LDREF/1000G.EUR.$i>> MergedChrs.txt
-done 
-plink --bfile LDREF/1000G.EUR.1 --threads $CORES --merge-list MergedChrs.txt --make-bed --allow-no-sex --out TotalLDRef
-
-#Write SNP List for LDREF Data
-#plink --threads $CORES --bfile INDV_1000G_Pops --write-snplist --out LDREF_SNPs
-
-#Reformat SNP List for plink filter.txt
-awk '{ print $1"\t"$4"\t"$4"\t"$2 }' 1000Genomes_Merged.bim > LDREF_SNPs.txt
-
-##Filter for SNPs in 1000G - LDREF_FiltSNPs
-plink --threads $CORES --bfile GWASTotal --extract LDREF_SNPs.txt --make-bed --allow-no-sex --out MSBB_LDREF_FiltSNPs
-
 #Rename Snps with rsIDs & Centimorgan Distance
 #python BimAnotator.py TotalLDRef.bim LDREF_FiltSNPs.bim
 ```
 
-## ReName the MSBB SNPS so the can be combined
+### ReName the MSBB SNPS so the can be combined
 ```{python ReNamer}
 import sys
 import os
@@ -226,4 +183,181 @@ for line in F1:
 	print >>OUT, Entry
 
 F1.close()
+```
+
+### Finalize the MSBB LD SNP-Set Derived from WGS
+```{bash FinalizeMSBB }
+source ~/.bashrc
+PATH=$PATH:/home/jgockley/TWAS/bin/
+CORES=`expr $(nproc) - 2`
+
+#Replace BIM File
+mv MSBB_LDREF_FiltSNPsRenamed.bim MSBB_LDREF_FiltSNPs.bim
+
+#Check the SNP-Set
+##These numbers should be equal:
+grep 'rs' MSBB_LDREF_FiltSNPs.bim | wc -l
+wc -l MSBB_LDREF_FiltSNPs.bim
+
+##This Number should be zero:
+grep '.' MSBB_LDREF_FiltSNPs.bim | wc -l
+```
+
+## Process MAYO Genotyping Data
+```{bash MAYO}
+source ~/.bashrc
+PATH=$PATH:/home/jgockley/TWAS/bin/
+CORES=`expr $(nproc) - 2`
+
+#Download
+mkdir Mayo
+synapse get -r syn8650955 --downloadLocation Mayo/
+
+plink --bfile Mayo/MayoRNAseq_RNAseq_Genome-Wide_Genotypes_HRCimputed --threads $CORES --extract LDREF_SNPs.txt --range --make-bed --out Mayo_LDREF_Filt
+
+rm -r Mayo/
+#SNPS REMAINING COMPARED TO TOTAL LDREF SET:
+##1,187,249 out of 1,190,321 (  99.74% )
+
+#Rename Snps with rsIDs & Centimorgan Distance
+#python BimAnotator.py TotalLDRef.bim Mayo_LDREF_Filt.bim
+
+```
+
+### ReName the Mayo SNPS so the can be combined
+```{python ReNamerMayo}
+import sys
+import os
+import re
+
+###This Script reannotates bim file name from a snp list
+#Usage:
+# python BimAnotator.py TotalLDRef.bim LDREF_FiltSNPs.bim
+
+InFile = TotalLDRef.bim       #sys.argv[1];
+#Gene_Annots/hg19/Merged_hg19_Filt_ENGS.bed
+InFileb = Mayo_LDREF_Filt.bim  #sys.argv[2];
+
+RS_IDs = {}
+RS_Pos = {}
+
+F1 = open(InFile)
+for line in F1:
+	LINE = line.rstrip('\r\n')
+	lst = LINE.split('\t')
+
+	RS_IDs[ ''.join([lst[0], '_', lst[3]]) ] = lst[1]
+	RS_Pos[ ''.join([lst[0], '_', lst[3]]) ] = lst[2]
+F1.close()
+
+#Open Output
+OUT = open( ''.join([ InFileb.replace(".bim", ""), 'Renamed.bim']), 'w' )
+
+F1 = open(InFileb)
+for line in F1:
+	LINE = line.rstrip('\r\n')
+	lst = LINE.split('\t')
+
+	Name = RS_IDs[ ''.join([ lst[0], "_", lst[3] ])]
+	Post = RS_Pos[ ''.join([ lst[0], "_", lst[3] ])]
+
+	Entry = '\t'.join([ lst[0], Name, Post, lst[3], lst[4], lst[5] ])
+	print >>OUT, Entry
+
+F1.close()
+```
+
+### Finalize the Mayo LD SNP-Set Derived from imputed genotyping
+```{bash CheckMayo}
+source ~/.bashrc
+PATH=$PATH:/home/jgockley/TWAS/bin/
+CORES=`expr $(nproc) - 2`
+
+mv Mayo_LDREF_FiltRenamed.bim Mayo_LDREF_Filt.bim
+#Check the SNP-Set
+##These numbers should be equal:
+grep 'rs' Mayo_LDREF_Filt.bim | wc -l
+wc -l Mayo_LDREF_Filt.bim
+
+##This Number should be zero:
+grep '.' Mayo_LDREF_Filt.bim | wc -l
+```
+
+## Process ROSMAP Genotyping Data
+```{bash DosageToHardCalls}
+source ~/.bashrc
+PATH=$PATH:/home/jgockley/TWAS/bin/
+CORES=`expr $(nproc) - 2`
+
+#Synapse gets:
+declare -A SynArr
+arr["1"]=syn5879161
+arr["10"]=syn5879677
+arr["11"]=syn5879748
+arr["12"]=syn5879792
+arr["13"]=syn5879812
+arr["14"]=syn5879827
+arr["15"]=syn5879828
+arr["16"]=syn5879830
+arr["17"]=syn5879832
+arr["18"]=syn5879834
+arr["19"]=syn5879835
+arr["2"]=syn5879456
+arr["20"]=syn5879836
+arr["21"]=syn5879837
+arr["22"]=syn5879838
+arr["3"]=syn5879461
+arr["4"]=syn5879463
+arr["5"]=syn5879470
+arr["6"]=syn5879472
+arr["7"]=syn5879473
+arr["8"]=syn5879559
+arr["9"]=syn5879628
+
+#Pull FAM File
+synapse get syn20809809
+
+#Loop Through chromosomes and Process
+for i in {1..22}
+do
+	
+	synapse get ${arr[$i]}
+
+	chr=$i
+	echo "1 AMP-AD_ROSMAP_Rush-Broad_AffymetrixGenechip6_Imputed_chr"$chr".dosage.gz" > b.txt
+  
+  #Write a Dosage File
+	plink --threads $CORES --fam Updated_Actual_Fam.fam --dosage b.txt list noheader format=1 --write-dosage
+  
+  #Convert to plink hard calls 
+	plink2 --threads $CORES --fam Updated_Actual_Fam.fam --import-dosage plink.out.dosage format=1 --hard-call-threshold 0.1 --make-bed --out AMP-AD_ROSMAP_Rush-Broad_AffymetrixGenechip6_Imputed_chr$chr
+	
+	rm plink.out.dosage
+
+done
+rm b.txt
+
+##Merge Chromsomes in Plink Format 
+for i in {2..22} 
+do 
+    echo AMP-AD_ROSMAP_Rush-Broad_AffymetrixGenechip6_Imputed_chr$i >> MergedGWAS.txt
+done 
+
+plink --threads $CORES --bfile AMP-AD_ROSMAP_Rush-Broad_AffymetrixGenechip6_Imputed_chr1 --silent --merge-list MergedGWAS.txt --extract MSBB_LD_SNPS.txt --make-bed --allow-no-sex --out ROSMAPTotal
+rm -r AMP-AD_ROSMAP_Rush-Broad_AffymetrixGenechip6_Imputed_chr*
+
+#Check the SNP-Set
+##These numbers should be equal:
+grep 'rs' ROSMAPTotal.bim | wc -l
+wc -l ROSMAPTotal.bim
+
+##This Number should be zero:
+grep '.' ROSMAPTotal.bim | wc -l
+```
+
+##Merge the Genotype Sets and Preform PCA
+```{bash MergeAndCall}
+
+
+
 ```
