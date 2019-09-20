@@ -62,7 +62,6 @@ rm -r LDREF/
 
 #Pull 1000G Data, convert to plink, Filt for INDV and SNPs
 for i in {1..22}
-#for i in {20..22}
 do
 	wget ftp://ftp-trace.ncbi.nih.gov/1000genomes/ftp/phase1/analysis_results/integrated_call_sets/ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf.gz
 
@@ -72,20 +71,17 @@ done
 
 #Merge All Plink Chr Files 
 for i in {2..22}
-#for i in {21..22}
 do
   echo 1000Genomes_chr$i >> Merge.list
 done
 
-#_#plink --bfile 1000Genomes_chr1 --merge-list Merge.list --make-bed --out 1000Genomes_Merged
-plink --bfile 1000Genomes_chr20 --merge-list Merge.list --make-bed --out 1000Genomes_Merged
+plink --bfile 1000Genomes_chr1 --merge-list Merge.list --make-bed --out 1000Genomes_Merged
 
-#rm 1000Genomes_chr*
+rm 1000Genomes_chr*
 rm *.list
 rm *.panel
 rm LDREF.tar.bz2
 rm MergedChrs.txt
-
 ```
 
 ## Process MSBB WGS Data
@@ -94,7 +90,8 @@ rm MergedChrs.txt
 * Merge across chromosomes
 * Filter for 1000G SNPs
 ```{bash ProcessMSBB, echo=FALSE}
-CORES=$(nproc)
+CORES=`expr $(nproc) - 2`
+PATH=$PATH:/home/jgockley/TWAS/bin/
 ##Pull VCF Files from Synapse
 mkdir VCF
 synapse get -r syn11707204 --downloadLocation VCF/
@@ -102,19 +99,63 @@ synapse get -r syn11707204 --downloadLocation VCF/
 ##Convert VCFs to plink
 mkdir GWAS_Plink
 
+rm VCF/NIA_JG_1898_samples_GRM_WGS_b37_JointAnalysis01_2017-12-08_X*
+rm VCF/NIA_JG_1898_samples_GRM_WGS_b37_JointAnalysis01_2017-12-08_Y*
+rm VCF/NIA_JG_1898_samples_GRM_WGS_b37_JointAnalysis01_2017-12-08_others*
+rm -r VCF/WGS_JointCalling/
+rm VCF/SYNAPSE_METADATA_MANIFEST.tsv
+
+#Convert to PLINK
 for i in {22..1}
 do
-  vcftools --gzvcf VCF/NIA_JG_1898_samples_GRM_WGS_b37_JointAnalysis01_2017-12-08_$i.recalibrated_variants.MSSM.vcf.gz --plink --out GWAS_Plink/MSSB_Chr_$i
+  plink --vcf VCF/NIA_JG_1898_samples_GRM_WGS_b37_JointAnalysis01_2017-12-08_$i\.recalibrated_variants.MSSM.vcf.gz --threads $CORES --make-bed --allow-no-sex --snps-only --out GWAS_Plink/MSSB_Chr_$i
+  rm VCF/NIA_JG_1898_samples_GRM_WGS_b37_JointAnalysis01_2017-12-08_$i\.recalibrated_variants.MSSM.vcf.*
+done
+rm -r VCF/
 
-  rm VCF/NIA_JG_1898_samples_GRM_WGS_b37_JointAnalysis01_2017-12-08_$i.recalibrated_variants.MSSM.vcf.gz
-
-  plink --file GWAS_Plink/MSSB_Chr_$i --threads $CORES --make-bed --allow-no-sex --snps-only --out GWAS_Plink/MSSB_Chr_$i
-
-  rm GWAS_Plink/*$i.ped
-  rm GWAS_Plink/*$i.map
+#Replace the "." IDs with a uniq ID
+for i in {22..1}
+do
+  awk '{ print $1"\t"$1"_"$4"\t"$3"\t"$4"\t"$5"\t"$6 }' GWAS_Plink/MSSB_Chr_$i\.bim > foo.txt
+  mv foo.txt GWAS_Plink/MSSB_Chr_$i\.bim
 done
 
-rm GWAS_Plink/*.tbi
+#Make an LD_Ref SNPList with matching name Schema
+awk '{print $1"\t"$2"\t"$3"\t"$1"_"$2 }' LDREF_SNPs.txt > MSBB_LD_SNPS.txt
+
+##Merge Chromsomes in Plink Format 
+for i in {2..22} 
+do 
+    echo GWAS_Plink/MSSB_Chr_$i >> MergedGWAS.txt
+done 
+
+CORES=`expr $(nproc) - 2`
+PATH=$PATH:/home/jgockley/TWAS/bin/
+plink --threads $CORES --bfile GWAS_Plink/MSSB_Chr_1 --merge-list MergedGWAS.txt --extract MSBB_LD_SNPS.txt --make-bed --allow-no-sex --out GWASTotal
+#rm -r WGS_Plink/
+
+#Rename Snps with rsIDs & Centimorgan Distance
+#python BimAnotator.py TotalLDRef.bim LDREF_FiltSNPs.bim
+```
+
+## Process MAYO Genotyping Data
+```{bash MAYO}
+CORES=`expr $(nproc) - 2`
+#Download
+mkdir Mayo
+synapse get -r syn8650955 --downloadLocation Mayo/
+
+plink --bfile Mayo/MayoRNAseq_RNAseq_Genome-Wide_Genotypes_HRCimputed --threads $CORES --extract LDREF_SNPs.txt --range --make-bed --out Mayo_LDREF_Filt
+
+rm -r Mayo/
+#SNPS REMAINING COMPARED TO TOTAL LDREF SET:
+##1,187,249 out of 1,190,321 (  99.74% )
+
+#Rename Snps with rsIDs & Centimorgan Distance
+python BimAnotator.py TotalLDRef.bim Mayo_LDREF_Filt.bim
+mv Mayo_LDREF_FiltRenamed.bim Mayo_LDREF_Filt.bim
+
+```
 
 ##Merge Chromsomes in Plink Format 
 for i in {2..22} 
