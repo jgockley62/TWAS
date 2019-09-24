@@ -1,7 +1,7 @@
 # TWAS
-## Processing of TWAS Data:
+## Preprocessing of TWAS Data:
 
-### Reports on all processing steps can be seen in the respective subfolders in the synapse project here:
+### Reports on all preprocessing steps can be seen in the respective subfolders in the synapse project here:
 [Synapse Data Project](https://www.synapse.org/#!Synapse:syn18936948/files/)
 
 ### All Expression data is re-processed to correct for diagnosis with the following scripts
