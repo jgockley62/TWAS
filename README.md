@@ -2,7 +2,7 @@
 ## Processing of TWAS Data:
 
 ### Reports on all processing steps can be seen in the respective subfolders in the synapse project here:
-[linked phrase](https://www.synapse.org/#!Synapse:syn18936948/files/)
+[Synapse Data Project](https://www.synapse.org/#!Synapse:syn18936948/files/)
 
 ### All Expression data is re-processed to correct for diagnosis with the following scripts
 * code/MSBB_RegressDiagnosis_4_TWAS.Rmd
