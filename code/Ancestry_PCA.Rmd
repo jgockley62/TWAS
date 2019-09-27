@@ -8,6 +8,7 @@ output: pdf_document
 
 ```{r libs, include=FALSE}
 knitr::opts_chunk$set(
+  #python.reticulate=FALSE,
   echo=FALSE,
   warning=FALSE,
   message=FALSE,
@@ -15,13 +16,14 @@ knitr::opts_chunk$set(
   tidy = FALSE,
   cache = TRUE,
   results='hide')
-library(reticulate)
 ```
 ##Before running 
 Run the following in docker exec -it <CONTAINER> /bin/bash 
 chmod 777 /root
 mv TWAS/ /home/<USR>/TWAS/
 chown -hR <GID>:<USR> /home/<USR>/TWAS/
+maybe# ln -s /usr/bin/python /usr/local/bin/python
+
 
 ## Login to Synapse Will need to replace with your credentials
 ```{bash Login, echo=T, results='hide', eval=FALSE}
@@ -34,9 +36,10 @@ echo "[authentication]" >> ~/.synapseConfig
 echo "username = <USR>" >> ~/.synapseConfig
 echo "password = <PASWD>" >> ~/.synapseConfig
 ```
+
 ## Pull 1000Genomes down and process
 * Pull out reference populations (CEU, YRI, CHB, JPT)
-```{bash pull_1000Genomes, echo=T, results='hide', cache = FALSE, echo=FALSE}
+```{bash pull_1000Genomes, echo=T, results='hide', cache = FALSE}
 source /root/.bashrc
 PATH=$PATH:/home/jgockley/TWAS/TWAS/bin/
 #PATH=$PATH:TWAS/bin/
@@ -136,9 +139,9 @@ rm VCF/SYNAPSE_METADATA_MANIFEST.tsv
 for i in {22..1}
 do
   plink --vcf VCF/NIA_JG_1898_samples_GRM_WGS_b37_JointAnalysis01_2017-12-08_$i\.recalibrated_variants.MSSM.vcf.gz --threads $CORES --make-bed --silent --allow-no-sex --snps-only --out GWAS_Plink/MSSB_Chr_$i
-  rm VCF/NIA_JG_1898_samples_GRM_WGS_b37_JointAnalysis01_2017-12-08_$i\.recalibrated_variants.MSSM.vcf.*
+  #rm VCF/NIA_JG_1898_samples_GRM_WGS_b37_JointAnalysis01_2017-12-08_$i\.recalibrated_variants.MSSM.vcf.*
 done
-rm -r VCF/
+#rm -r VCF/
 
 #Replace the "." IDs with a uniq ID
 for i in {22..1}
@@ -158,47 +161,13 @@ done
 
 plink --threads $CORES --bfile GWAS_Plink/MSSB_Chr_1 --silent --merge-list MergedGWAS.txt --extract MSBB_LD_SNPS.txt --make-bed --allow-no-sex --out GWASTotal
 #rm -r GWAS_Plink/
-rm MergedGWAS.txt
+#rm MergedGWAS.txt
 
 ```
 
 ### ReName the MSBB SNPS so the can be combined
-```{python ReNamer, echo=T, results='hide'}
-import sys
-import os
-import re
-
-InFile = 'TotalLDRef.bim'
-InFileb = 'GWASTotal.bim' #LDREF_FiltSNPs.bim
-
-RS_IDs = {}
-RS_Pos = {}
-
-F1 = open(InFile)
-for line in F1:
-	LINE = line.rstrip('\r\n')
-	lst = LINE.split('\t')
-
-	RS_IDs[ ''.join([lst[0], '_', lst[3]]) ] = lst[1]
-	RS_Pos[ ''.join([lst[0], '_', lst[3]]) ] = lst[2]
-F1.close()
-
-#Open Output
-OUT = open( ''.join([ InFileb.replace(".bim", ""), 'Renamed.bim']), 'w' )
-
-F1 = open(InFileb)
-for line in F1:
-	LINE = line.rstrip('\r\n')
-	lst = LINE.split('\t')
-
-	Name = RS_IDs[ ''.join([ lst[0], "_", lst[3] ])]
-	Post = RS_Pos[ ''.join([ lst[0], "_", lst[3] ])]
-
-	Entry = '\t'.join([ lst[0], Name, Post, lst[3], lst[4], lst[5] ])
-	print >>OUT, Entry
-
-F1.close()
-OUT.close()
+```{r ReNamer_ONE, echo=F, results='hide'}
+system("python Python/First_Rename.py")
 ```
 
 ### Finalize the MSBB LD SNP-Set Derived from WGS
@@ -215,13 +184,13 @@ cat GWASTotalRenamed.bim | wc -l
 ##This Number should be zero:
 Repod=$(awk '{print $2}' GWASTotalRenamed.bim | grep "\." - | wc -l)
 if [ "$Repod" -eq "0" ]; then
-   mv GWASTotalRenamed.bim GWASTotal.bim;
+   cp GWASTotalRenamed.bim GWASTotal.bim;
 fi
 if [ "$Repod" -ne "0" ]; then
    echo $Repod" lines could've failed Translation"
 fi
 plink --bfile GWASTotal --silent --threads $CORES --make-bed --out MSBB_Preliminary_Genos
-rm GWASTotal.*
+#rm GWASTotal.*
 ```
 
 ## Process MAYO Genotyping Data
@@ -242,43 +211,8 @@ rm -r Mayo/
 ```
 
 ### ReName the Mayo SNPS so the can be combined
-```{python ReNamerMayo, echo=T, results='hide'}
-import sys
-import os
-import re
-
-InFile = 'TotalLDRef.bim'
-InFileb = 'Mayo_LDREF_Filt.bim'
-
-RS_IDs = {}
-RS_Pos = {}
-
-F1 = open(InFile)
-for line in F1:
-	LINE = line.rstrip('\r\n')
-	lst = LINE.split('\t')
-
-	RS_IDs[ ''.join([lst[0], '_', lst[3]]) ] = lst[1]
-	RS_Pos[ ''.join([lst[0], '_', lst[3]]) ] = lst[2]
-F1.close()
-
-
-#Open Output
-OUT = open( ''.join([ InFileb.replace(".bim", ""), 'Renamed.bim']), 'w' )
-
-F1 = open(InFileb)
-for line in F1:
-	LINE = line.rstrip('\r\n')
-	lst = LINE.split('\t')
-
-	Name = RS_IDs[ ''.join([ lst[0], "_", lst[3] ])]
-	Post = RS_Pos[ ''.join([ lst[0], "_", lst[3] ])]
-
-	Entry = '\t'.join([ lst[0], Name, Post, lst[3], lst[4], lst[5] ])
-	print >>OUT, Entry
-
-F1.close()
-OUT.close()
+```{r ReNamer_Two_Mayo, echo=T, results='hide'}
+system("python Python/Second_Rename.py")
 ```
 
 ### Finalize the Mayo LD SNP-Set Derived from imputed genotyping
@@ -384,51 +318,8 @@ rm RefIDs.txt
 ```
 
 ### ReName the Mayo SNPS so the can be combined
-```{python ReNamerRosMap, echo=T, results='hide'}
-import sys
-import os
-import re
-
-InFile = 'TotalLDRef.bim'
-InFileb = 'ROSMAP_temp.bim'
-
-RS_Chr = {}
-RS_Pos = {}
-RS_BP ={}
-
-F1 = open(InFile)
-for line in F1:
-	LINE = line.rstrip('\r\n')
-	lst = LINE.split('\t')
-
-	RS_Chr[ ''.join([lst[1], '_', lst[4], '_', lst[5]]) ] = lst[0]
-	RS_Pos[ ''.join([lst[1], '_', lst[4], '_', lst[5]]) ] = lst[2]
-	RS_BP[ ''.join([lst[1], '_', lst[4], '_', lst[5]]) ] = lst[3]
-F1.close()
-
-#Open Output
-OUT = open( ''.join([ InFileb.replace(".bim", ""), 'Renamed.bim']), 'w' )
-OUT2 = open( 'FailedSNPS.txt', 'w' )
-
-F1 = open(InFileb)
-for line in F1:
-	LINE = line.rstrip('\r\n')
-	lst = LINE.split('\t')
-	LOC = ''.join([ lst[1], '_', lst[4], '_', lst[5] ])
-	chrm = RS_Chr.get( LOC, None )
-	pos = RS_Pos.get( LOC, None )
-	bp = RS_BP.get( LOC, None )
-
-	if( chrm == None ):
-	  print >>OUT, LINE
-	  print >>OUT2, lst[1]
-	else:
-	  Entry = '\t'.join([ chrm, lst[1], pos, bp, lst[4], lst[5] ])
-	  print >>OUT, Entry
-
-F1.close()
-OUT.close()
-OUT2.close()
+```{r ReNamer_Three_Rosmap, echo=T, results='hide'}
+system("python Python/Third_Rename.py")
 ```
 
 ##Merge the Genotype Sets and Preform PCA
@@ -533,12 +424,10 @@ sed -i 's/\t/ /g' GemClustAllGenos.txt
 sed -i 's/  */ /g' GemClustAllGenos.txt
 
 rm peds.txt
-rm Names.txt
-rm PEDS.txt
 AllSnps4GemClust.*
 ```
 
-##Plot PCA -- Needs Work...
+##Plot PCA
 ```{r PlotPCA, cache = FALSE, echo=FALSE}
 library(ggplot2)
 library(plotrix)
@@ -656,7 +545,7 @@ P <- P + ylab(paste0( "PC2 ", signif( PC2_Var_exp*100, 3), "%" ))
 P <- P + ggtitle("Ancestry Clustering Analysis") + theme(plot.title = element_text(hjust = 0.5))
 P
 
-mydf$task <- factor(mydf$task, levels = c("up", "down", "left", "right", "front", "back"))
+#mydf$task <- factor(mydf$task, levels = c("up", "down", "left", "right", "front", "back"))
 P <- ggplot(pcs, aes( PC1, PC2) ) + geom_point( aes(colour = Ancestry, shape = SampleType), cex=.8, alpha = 4/10) 
 P <- P + xlab(paste0( "PC1 ", signif( PC1_Var_exp*100, 3), "%" )) 
 P <- P + ylab(paste0( "PC2 ", signif( PC2_Var_exp*100, 3), "%" ))  
@@ -690,7 +579,8 @@ plink --threads $CORES --bfile Merged_GenoTypes --keep CEU_AncestryClustered_IND
 ```
 
 ```{r synapse.parameters, include=FALSE, cache=TRUE}
-parentId = 'syn20798011';
+library(githubr)
+parentId = 'syn18936948';
 activityName = 'Ancestry Analysis';
 activityDescription = 'Processing and Analysis of WGS and Genotype data along with ancestry analysis with 1000 genome\'s CEU, CHB, YRI, and JPT populations';
 thisFileName <- 'Ancestry_PCA.Rmd'
@@ -699,8 +589,8 @@ thisRepo <- getRepo(repository = "jgockley62/TWAS", ref="branch", refName='maste
 thisFile <- getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thisFileName))
 ```
 
-```{r Store, cache = FALSE, echo=FALSE, results='hide'}
-parentId = 'syn20798011';
+```{r Store, cache = FALSE, echo=FALSE, results='hide', eval=FALSE}
+parentId = 'syn18936948';
 activityName = 'Ancestry Analysis';
 activityDescription = 'Processing and Analysis of WGS and Genotype data along with ancestry analysis with 1000 genome\'s CEU, CHB, YRI, and JPT populations';
 
@@ -733,7 +623,7 @@ all.annotations = list(
 
 #STORE
 #CEU Indvs
-write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CEU_AncestryClustered_INDVs.tsv', sep = '\t', quote=F)
+#write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CEU_AncestryClustered_INDVs.tsv', sep = '\t', quote=F)
 ENRICH_OBJ = File('CEU_AncestryClustered_INDVs.tsv', 
                   name = 'Samples Clustered to CEU Ancestry', 
                   parentId = CODE$properties$id)
@@ -743,7 +633,7 @@ all.annotations$dataSubType = 'CEU_INDV'
 synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
 #PCA EginVecs
-write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'Total_PCA.eigenvec', sep = '\t', quote=F)
+#write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'Total_PCA.eigenvec', sep = '\t', quote=F)
 ENRICH_OBJ = File('Total_PCA.eigenvec', 
                   name = 'PCA Eigen Vectors', 
                   parentId = CODE$properties$id)
@@ -753,7 +643,7 @@ all.annotations$dataSubType = 'EigenVecs'
 synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
 #PCA EginVecs
-write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'Total_PCA.eigenval', sep = '\t', quote=F)
+#write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'Total_PCA.eigenval', sep = '\t', quote=F)
 ENRICH_OBJ = File('Total_PCA.eigenval', 
                   name = 'PCA Eigen Values', 
                   parentId = CODE$properties$id)
@@ -767,7 +657,7 @@ CODE <- Folder(name = "Ancestry_Clustered_Genotypes", parentId = parentId)
 CODE <- synStore(CODE)
 
 #Geno Bed
-write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CEU_AncestryMatched_Genotypes.bed', sep = '\t', quote=F)
+#write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CEU_AncestryMatched_Genotypes.bed', sep = '\t', quote=F)
 ENRICH_OBJ = File('CEU_AncestryMatched_Genotypes.bed', 
                   name = 'Genotype Bed File', 
                   parentId = CODE$properties$id)
@@ -777,7 +667,7 @@ all.annotations$dataSubType = 'GWAS'
 synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
 #Geno Bim
-write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CEU_AncestryMatched_Genotypes.bim', sep = '\t', quote=F)
+#write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CEU_AncestryMatched_Genotypes.bim', sep = '\t', quote=F)
 ENRICH_OBJ = File('CEU_AncestryMatched_Genotypes.bim', 
                   name = 'Genotype Bim File', 
                   parentId = CODE$properties$id)
@@ -787,7 +677,7 @@ all.annotations$dataSubType = 'GWAS'
 synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
 #Geno Fam
-write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CEU_AncestryMatched_Genotypes.fam', sep = '\t', quote=F)
+#write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CEU_AncestryMatched_Genotypes.fam', sep = '\t', quote=F)
 ENRICH_OBJ = File('CEU_AncestryMatched_Genotypes.fam', 
                   name = 'Genotype Fam File', 
                   parentId = CODE$properties$id)
@@ -797,7 +687,7 @@ all.annotations$dataSubType = 'GWAS'
 synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
 #Geno nosex
-write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CEU_AncestryMatched_Genotypes.nosex', sep = '\t', quote=F)
+#write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CEU_AncestryMatched_Genotypes.nosex', sep = '\t', quote=F)
 ENRICH_OBJ = File('CEU_AncestryMatched_Genotypes.nosex', 
                   name = 'Genotype nosex File', 
                   parentId = CODE$properties$id)
@@ -806,8 +696,8 @@ ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName,
 all.annotations$dataSubType = 'GWAS'
 synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
-#Geno nosex
-write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CEU_AncestryMatched_Genotypes.log', sep = '\t', quote=F)
+#Geno log
+#write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CEU_AncestryMatched_Genotypes.log', sep = '\t', quote=F)
 ENRICH_OBJ = File('CEU_AncestryMatched_Genotypes.log', 
                   name = 'Genotype log File', 
                   parentId = CODE$properties$id)
@@ -822,13 +712,10 @@ synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
 ```{r knitmd, eval=FALSE, cache=FALSE, include=FALSE}
 library(synapser)
 library(knit2synapse) 
-#install.packages("reticulate")
-library(reticulate)
 
-# get the package from devtools::install_github('Sage-Bionetworks/knit2synapse')
 synLogin()
 knit2synapse::createAndKnitToFolderEntity(file = "Ancestry_PCA.Rmd",
-                                          parentId ="syn20798011",
+                                          parentId ="syn18936948",
                                           folderName = 'Ancestry_Analysis')
 
 ```
