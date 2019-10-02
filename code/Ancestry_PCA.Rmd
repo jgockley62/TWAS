@@ -166,8 +166,42 @@ plink --threads $CORES --bfile GWAS_Plink/MSSB_Chr_1 --silent --merge-list Merge
 ```
 
 ### ReName the MSBB SNPS so the can be combined
-```{r ReNamer_ONE, echo=F, results='hide'}
-system("python Python/First_Rename.py")
+```{python ReNamer_ONE, echo=F, results='hide'}
+import sys
+import os
+import re
+
+InFile = 'TotalLDRef.bim'
+InFileb = 'GWASTotal.bim' #LDREF_FiltSNPs.bim
+
+RS_IDs = {}
+RS_Pos = {}
+
+F1 = open(InFile)
+for line in F1:
+	LINE = line.rstrip('\r\n')
+	lst = LINE.split('\t')
+
+	RS_IDs[ ''.join([lst[0], '_', lst[3]]) ] = lst[1]
+	RS_Pos[ ''.join([lst[0], '_', lst[3]]) ] = lst[2]
+F1.close()
+
+#Open Output
+OUT = open( ''.join([ InFileb.replace(".bim", ""), 'Renamed.bim']), 'w' )
+
+F1 = open(InFileb)
+for line in F1:
+	LINE = line.rstrip('\r\n')
+	lst = LINE.split('\t')
+
+	Name = RS_IDs[ ''.join([ lst[0], "_", lst[3] ])]
+	Post = RS_Pos[ ''.join([ lst[0], "_", lst[3] ])]
+
+	Entry = '\t'.join([ lst[0], Name, Post, lst[3], lst[4], lst[5] ])
+	print >>OUT, Entry
+
+F1.close()
+OUT.close()
 ```
 
 ### Finalize the MSBB LD SNP-Set Derived from WGS
@@ -211,8 +245,43 @@ rm -r Mayo/
 ```
 
 ### ReName the Mayo SNPS so the can be combined
-```{r ReNamer_Two_Mayo, echo=T, results='hide'}
-system("python Python/Second_Rename.py")
+```{python ReNamer_Two_Mayo, echo=T, results='hide'}
+import sys
+import os
+import re
+
+InFile = 'TotalLDRef.bim'
+InFileb = 'Mayo_LDREF_Filt.bim'
+
+RS_IDs = {}
+RS_Pos = {}
+
+F1 = open(InFile)
+for line in F1:
+	LINE = line.rstrip('\r\n')
+	lst = LINE.split('\t')
+
+	RS_IDs[ ''.join([lst[0], '_', lst[3]]) ] = lst[1]
+	RS_Pos[ ''.join([lst[0], '_', lst[3]]) ] = lst[2]
+F1.close()
+
+
+#Open Output
+OUT = open( ''.join([ InFileb.replace(".bim", ""), 'Renamed.bim']), 'w' )
+
+F1 = open(InFileb)
+for line in F1:
+	LINE = line.rstrip('\r\n')
+	lst = LINE.split('\t')
+
+	Name = RS_IDs[ ''.join([ lst[0], "_", lst[3] ])]
+	Post = RS_Pos[ ''.join([ lst[0], "_", lst[3] ])]
+
+	Entry = '\t'.join([ lst[0], Name, Post, lst[3], lst[4], lst[5] ])
+	print >>OUT, Entry
+
+F1.close()
+OUT.close()
 ```
 
 ### Finalize the Mayo LD SNP-Set Derived from imputed genotyping
@@ -318,8 +387,51 @@ rm RefIDs.txt
 ```
 
 ### ReName the Mayo SNPS so the can be combined
-```{r ReNamer_Three_Rosmap, echo=T, results='hide'}
-system("python Python/Third_Rename.py")
+```{python ReNamer_Three_Rosmap, echo=T, results='hide'}
+import sys
+import os
+import re
+
+InFile = 'TotalLDRef.bim'
+InFileb = 'ROSMAP_temp.bim'
+
+RS_Chr = {}
+RS_Pos = {}
+RS_BP ={}
+
+F1 = open(InFile)
+for line in F1:
+	LINE = line.rstrip('\r\n')
+	lst = LINE.split('\t')
+
+	RS_Chr[ ''.join([lst[1], '_', lst[4], '_', lst[5]]) ] = lst[0]
+	RS_Pos[ ''.join([lst[1], '_', lst[4], '_', lst[5]]) ] = lst[2]
+	RS_BP[ ''.join([lst[1], '_', lst[4], '_', lst[5]]) ] = lst[3]
+F1.close()
+
+#Open Output
+OUT = open( ''.join([ InFileb.replace(".bim", ""), 'Renamed.bim']), 'w' )
+OUT2 = open( 'FailedSNPS.txt', 'w' )
+
+F1 = open(InFileb)
+for line in F1:
+	LINE = line.rstrip('\r\n')
+	lst = LINE.split('\t')
+	LOC = ''.join([ lst[1], '_', lst[4], '_', lst[5] ])
+	chrm = RS_Chr.get( LOC, None )
+	pos = RS_Pos.get( LOC, None )
+	bp = RS_BP.get( LOC, None )
+
+	if( chrm == None ):
+	  print >>OUT, LINE
+	  print >>OUT2, lst[1]
+	else:
+	  Entry = '\t'.join([ chrm, lst[1], pos, bp, lst[4], lst[5] ])
+	  print >>OUT, Entry
+
+F1.close()
+OUT.close()
+OUT2.close()
 ```
 
 ##Merge the Genotype Sets and Preform PCA
@@ -710,12 +822,12 @@ synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
 [Github](`r thisFile`)
 
 ```{r knitmd, eval=FALSE, cache=FALSE, include=FALSE}
-library(synapser)
+#library(synapser)
 library(knit2synapse) 
 
 synLogin()
-knit2synapse::createAndKnitToFolderEntity(file = "Ancestry_PCA.Rmd",
-                                          parentId ="syn18936948",
-                                          folderName = 'Ancestry_Analysis')
+#knit2synapse::createAndKnitToFolderEntity(file = "Ancestry_PCA.Rmd",
+#                                          parentId ="syn18936948",
+#                                          folderName = 'Ancestry_Analysis')
 
 ```

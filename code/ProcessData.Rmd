@@ -1,0 +1,347 @@
+---
+title: "Process RNA-Seq and Genotype Data for TWAS"
+author: "JKG"
+date: "9/25/2019"
+output: pdf_document
+  chunk_output_type: console
+---
+
+```{r libs, include=FALSE}
+knitr::opts_chunk$set(
+  echo=FALSE,
+  warning=FALSE,
+  message=FALSE,
+  error = FALSE,
+  tidy = FALSE,
+  cache = TRUE,
+  results='hide')
+#library(reticulate)
+```
+##Before running 
+Run the following in docker exec -it <CONTAINER> /bin/bash 
+chmod 777 /root
+mv TWAS/ /home/<USR>/TWAS/
+chown -hR <GID>:<USR> /home/<USR>/TWAS/
+
+## Login to Synapse Will need to replace with your credentials
+```{bash Login, echo=T, results='hide', eval=FALSE}
+source /root/.bashrc
+synapse login -u <USR> -p <PSWD> --rememberMe
+
+#Alternativly you can setup a credentials file as such:
+touch ~/.synapseConfig
+echo "[authentication]" >> ~/.synapseConfig
+echo "username = <USR>" >> ~/.synapseConfig
+echo "password = <PASWD>" >> ~/.synapseConfig
+```
+
+## MSBB RNA-Seq: Average Across Brain Regions, Filter for INDV. w/Genotype Data, Rename Samples with Genotype ID 
+```{r MSBBRNA, echo=F, results='hide', cache = FALSE}
+library(data.table)
+
+Process_MSBB <- function( dna, exp, id){
+  #'@dna synID of Geno samples eg 'syn11384608'
+  #'@exp synID of expression data eg 'syn8485026'
+  #'@id synID of id translators  eg. 'syn6100548'
+  #dna<-'syn11384608'
+  #exp<-'syn8485026'
+  #id<-'syn6100548'
+  
+  DNA <- fread(synGet(dna)$path)
+  Expression <- read.table(synGet(exp)$path, header=T)
+  IDs <- fread(synGet(id)$path)
+  IDs <- IDs[ grepl( 'accepted_hits.sort.coord.bam', IDs$fileName ) == T, ]
+  IDs <- IDs[ (IDs$sampleIdentifier %in% colnames(Expression)) == T, ]
+  
+  INDVs <- IDs$individualIdentifier[ !duplicated(IDs$individualIdentifier) ]
+  
+  if( 'ensembl_gene_id' %in% colnames(Expression) ){
+    Averaged <- as.data.frame( Expression$ensembl_gene_id )
+  }else{
+    Averaged <- as.data.frame( row.names(Expression) )
+    colnames(Averaged) <- 'ensembl_gene_id'
+  }
+  
+  Ave <- function( ID, DF, Exp ){
+    #'@ID Sample ID eg. 'AMPAD_MSSM_0000007155'
+    #'@DF the target dataframe eg. 'IDs'
+    #'@Exp the expression set to filter eg Expression
+    
+    Exp <- as.data.frame( Exp )
+    COLS <- DF[ DF$individualIdentifier == ID, ]$sampleIdentifier
+    Small <- Exp[ , COLS ]
+    
+    if( dim(as.matrix(Small))[2] > 1 ){
+      eval(parse( text = paste0( 'return( ', ID, ' = rowMeans(Small) )')))
+    }else{
+      eval(parse( text = paste0( 'return( ', ID, ' = Small)')))
+    }
+  }
+  
+  for( i in INDVs ){
+    eval(parse( text = paste0( 'Averaged$', i, ' <- Ave(i, IDs, Expression )') ))
+  }
+  
+  GWAS_ID <- as.data.frame( DNA[ (DNA$individualIdentifier %in% colnames(Averaged)) == T , ] )
+  row.names(GWAS_ID) <- GWAS_ID$individualIdentifier
+  if( 'ensembl_gene_id' %in% colnames(Averaged) ){
+    Averaged <- Averaged[ , c( 'ensembl_gene_id', row.names(GWAS_ID) )]
+  }else{
+    Averaged <- Averaged[ , c( 'Expression$ensembl_gene_id', row.names(GWAS_ID) )]
+    colnames(Averaged[1]) <- 'ensembl_gene_id'
+  }
+  colnames(Averaged) <- paste0(GWAS_ID[ colnames(Averaged), ]$sampleIdentifier, "_", GWAS_ID[ colnames(Averaged), ]$sampleIdentifier)
+  colnames(Averaged)[1] <- "ensembl_gene_id"
+  return( Averaged )
+}
+
+Norm_Resid_MSBB <- Process_MSBB('syn11384608', 'syn8485026', 'syn6100548')
+dCorrect_Resid_MSBB <- Process_MSBB('syn11384608', 'syn20801798', 'syn6100548')
+```
+
+## Mayo RNA-Seq: Remove Cerebellum, Filter for INDV. w/Genotype Data, Rename Samples with Genotype ID 
+```{r MayoRNA, echo=T, results='hide', cache = FALSE, echo=FALSE}
+#Get Geno Names From FAM File
+FAM <- as.data.frame(fread( synGet('syn20820122')$path))
+FAM <- FAM[ (grepl('ROS', FAM[,1])) == F , ]
+FAM <- FAM[ (grepl('MAP', FAM[,1])) == F , ]
+FAM <- FAM[ (grepl('ROS', FAM[,2])) == F , ]
+FAM <- FAM[ (grepl('MAP', FAM[,2])) == F , ]
+FAM <- FAM[ FAM[,1] == 0, ]
+
+#Filter Expression Samples by Presence of a Genotype
+Mayo_filt <- function( syn, fam, Type ){
+  #'@syn A synID for the RNA Seq eg. 'syn20801999' or 'syn20801991'
+  #'@fam A fam file eg. FAM
+  #'@Type fread = 0 read.table=1
+  
+  fam <- FAM
+  if( Type == 0){
+    RNA <- read.table( synGet(syn)$path)
+    colnames(RNA) <- gsub('_TCX', '_a', colnames(RNA))
+    colnames(RNA) <- gsub('X', '', colnames(RNA))
+    colnames(RNA) <- gsub('_a', '_TCX', colnames(RNA))
+    RNA <- cbind( 'ensembl_gene_id' = row.names(RNA), RNA[,colnames(RNA)] )
+  }else{
+    RNA <- as.data.frame( fread( synGet(syn)$path ) )
+  }
+  RNA <- RNA[ , c('ensembl_gene_id', colnames(RNA)[(grepl('_TCX', colnames(RNA))==T)]) ]
+  colnames( RNA ) <- gsub( '_TCX', '', colnames( RNA ) )
+  colnames( RNA )[2:length(colnames( RNA ))] <- paste0( '0_', colnames( RNA )[2:length(colnames( RNA ))] )
+  
+  RNA <- RNA[ , c( "ensembl_gene_id", colnames(RNA)[ (colnames(RNA) %in% paste0( FAM[,1], "_", FAM[,2] )) == T ]) ]
+  return(RNA)
+}
+
+Norm_Resid_MAYO <- Mayo_filt( 'syn8466825', FAM, 1 )
+dCorrect_Resid_MAYO <- Mayo_filt( 'syn20801991', FAM, 0 )
+```
+
+## ROSMAP RNA-Seq: Filter for INDV. w/Genotype Data and Rename Samples with Genotype ID 
+```{r ROSMAPoRNA, echo=T, results='hide', cache = FALSE, echo=FALSE}
+#SVA: 'syn8456704'
+#SVA+Diag: 'syn20800652'
+Ros_Filt <- function(Exp, name, Trans, Fam, Var){
+  #'@Exp the expression matrix eg. 'syn8456704'
+  #'@name another name file eg. 'syn5879839'
+  #'@Trans 'syn3382527'
+  #'@Fam a .fam file of the ROS samps syn20820122
+  #'@Var 1=Nondiagnosis correcte 0=Diagnosis Corrected
+
+  # eg. Ros_Filt( 'syn8456704', 'syn5879839', 'syn3382527','syn20820122')
+  
+  FAM <- as.data.frame(fread( synGet(Fam)$path))
+  Fam <- FAM[ (grepl('ROS', FAM[,1])) == T | (grepl('MAP', FAM[,1])) == T | (grepl('ROS', FAM[,2])) == T | (grepl('MAP', FAM[,2])) == T, ]
+  InvFam <- FAM[ (grepl('ROS', FAM[,1])) == F & (grepl('MAP', FAM[,1])) == F & (grepl('ROS', FAM[,2])) == F & (grepl('MAP', FAM[,2])) == F, ]
+  Fam[,1] <- Fam[,2]
+  
+  #Need to assign sex to MSBB and Mayo
+  NAMED_FAM <- rbind( InvFam[1:dim(InvFam)[1], ],  Fam[1:dim(Fam)[1], ] )
+  
+  if(Var == 1){
+    Exp <- as.data.frame( fread(synGet(Exp)$path) )
+  }else{
+    if(Var == 0){
+        Exp <- as.data.frame( read.table(synGet('syn20800652')$path) )
+        colnames(Exp) <- gsub('X','', colnames(Exp))
+        Exp <- cbind(row.names(Exp), Exp[1:dim(Exp)[2]])
+        colnames(Exp)[1] <- 'ensembl_gene_id'
+    }else{}
+  }
+  Trans <- fread(synGet(Trans)$path)
+  Trans <- Trans[ Trans$gwas_id != "", ]
+  names <- as.data.frame(fread(synGet(name)$path))
+  Trans <- Trans[ (Trans$gwas_id  %in%  names[,2]) == T, ]
+  Trans <- Trans[ (Trans$rnaseq_id == "") == F, ]
+  Trans <- Trans[ !duplicated(Trans$rnaseq_id), ]
+  
+  #Filter for matched RNA-Seq and GWAS samples
+  Exp <- Exp[ ,c('ensembl_gene_id', colnames(Exp)[ (colnames(Exp) %in% Trans$rnaseq_id) == T]) ]
+  Trans <- as.data.frame( Trans[ (Trans$rnaseq_id %in% colnames(Exp)) == T,  ] )
+  row.names(Trans) <- Trans$rnaseq_id
+  
+  colnames(Exp) <- c('ensembl_gene_id', paste0( Trans[colnames(Exp)[2:length(colnames(Exp))],]$gwas_id, "_",  Trans[colnames(Exp)[2:length(colnames(Exp))],]$gwas_id))
+  return(Exp)
+}
+
+Norm_Resid_RM <-Ros_Filt( 'syn8456704', 'syn5879839', 'syn3382527','syn20820122', 1)
+dNorm_Resid_RM <-Ros_Filt( 'syn20800652', 'syn5879839', 'syn3382527','syn20820122', 0)
+```
+
+## Merge RNA-Seq: Merge and Annotate RNA-Seq
+* Remove genes on Chr X, Chr Y, Chr M 
+* Check for no Patch Contig Nonsense
+* Print Sample ID List
+* Filter Genotypes for RNA Samples
+```{r Merge RNASeq, echo=T, results='hide', cache = FALSE, echo=FALSE}
+#Common Genes:
+GNames <- names( table(c( as.character(Norm_Resid_MSBB$ensembl_gene_id), as.character(Norm_Resid_MAYO$ensembl_gene_id), as.character(Norm_Resid_RM$ensembl_gene_id)  ))[ table(c( as.character(Norm_Resid_MSBB$ensembl_gene_id), as.character(Norm_Resid_MAYO$ensembl_gene_id), as.character(Norm_Resid_RM$ensembl_gene_id)  )) == 3] )
+
+#Combine Into One DataFrame
+Comb <- function( MSBB, Mayo, RM, Names){
+  #MSBB <- Norm_Resid_MSBB
+  #Mayo <- Norm_Resid_MAYO
+  #RM <- Norm_Resid_RM
+  #Names <- GNames
+  
+  row.names(MSBB) <- as.character(MSBB$ensembl_gene_id)
+  row.names(Mayo) <- as.character(Mayo$ensembl_gene_id)
+  row.names(RM) <- as.character(RM$ensembl_gene_id)
+  
+  MSBB <- MSBB[ GNames ,2:dim(MSBB)[2] ]
+  Mayo <- Mayo[ GNames ,2:dim(Mayo)[2] ]
+  RM <- RM[ GNames ,2:dim(RM)[2] ]
+
+  Out <- cbind( MSBB[GNames,][ ,1:dim(MSBB)[2] ],
+                Mayo[GNames, ][ ,1:dim(Mayo)[2] ],
+                RM[GNames, ][, 1:dim(RM)[2] ]
+  )
+  
+  return( Out )
+}
+
+Norm_Resid <- Comb( Norm_Resid_MSBB, Norm_Resid_MAYO, Norm_Resid_RM, GNames )
+Diag_Resid <- Comb( dCorrect_Resid_MSBB,  dCorrect_Resid_MAYO, dNorm_Resid_RM, GNames )
+
+#Annotate for TWAS
+hg19 <- as.data.frame(fread(synGet('syn20826610')$path))
+hg19 <- hg19[ hg19[,1] %in% row.names( Norm_Resid ), ]
+row.names(hg19) <- hg19[,1]
+
+#Filter out the 231 Genes that don't have coherent annotations between GRCH38 and GRCH 37
+Norm_Resid <- Norm_Resid[ (row.names(Norm_Resid) %in% row.names(hg19)) == T, ]
+Diag_Resid <- Diag_Resid[ (row.names(Diag_Resid) %in% row.names(hg19)) == T, ]
+
+
+#Finalize
+Norm_Resid <- as.data.frame( cbind( 
+               TargetID = row.names(Norm_Resid), 
+               Gene_Symbol = row.names(Norm_Resid),
+               Chr = hg19[row.names(Norm_Resid), ][,2] , 
+               Coord = hg19[ row.names(Norm_Resid), ][,3],
+               Norm_Resid[ ,1:dim(Norm_Resid)[2]
+             ]) )
+
+Diag_Resid <- as.data.frame(cbind( 
+               TargetID = row.names(Diag_Resid), 
+               Gene_Symbol = row.names(Diag_Resid),
+               Chr = hg19[row.names(Diag_Resid), ][,2] , 
+               Coord = hg19[ row.names(Diag_Resid), ][,3],
+               Diag_Resid[ ,1:dim(Diag_Resid)[2]
+             ]) )
+
+#Filter out the ~ 480 ChrX genes
+Norm_Resid <- Norm_Resid[ (Norm_Resid$Chr %in% 'X') == F, ]
+Diag_Resid <- Diag_Resid[ (Diag_Resid$Chr %in% 'X') == F, ]
+
+#Order:
+Norm_Resid <- Norm_Resid[ with(Norm_Resid, order( Chr, Coord)), ]
+Diag_Resid <- Diag_Resid[ with(Diag_Resid, order( Chr, Coord)), ]
+write.table(Norm_Resid, file="ALL_CEU_RNA_Seq_SVAadusted.tsv", col.names =F, row.names=F, sep="\t", quote=F)
+write.table(Diag_Resid, file="ALL_CEU_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv", col.names =F, row.names=F, sep="\t", quote=F)
+
+#Filter for CEU Ancestry Matched Training Cohort
+CEU_Samps <- do.call( rbind, strsplit( colnames(Norm_Resid)[5:length(colnames(Norm_Resid))],  "_" ))
+write.table(CEU_Samps, file="ALL_CEU_SamplesToTrain.tsv", col.names =F, row.names=F, sep="\t", quote=F)
+
+#Output the ROSMAP INDV CEU Matched Training Cohort
+ROS <- colnames(Norm_Resid)[ grepl('ROS', colnames(Norm_Resid)) == T | grepl('MAP', colnames(Norm_Resid)) == T ]
+ROS_Norm_Resid <- Norm_Resid[ ,c("TargetID", "Gene_Symbol", "Chr", "Coord", ROS) ]
+ROS_Diag_Resid <- Diag_Resid[ ,c("TargetID", "Gene_Symbol", "Chr", "Coord", ROS) ]
+
+write.table(ROS_Norm_Resid, file="ROS_CEU_RNA_Seq_SVAadusted.tsv", col.names =F, row.names=F, sep="\t", quote=F)
+write.table(ROS_Diag_Resid, file="ROS_CEU_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv", col.names =F, row.names=F, sep="\t", quote=F)
+
+ROS_Samps <- do.call( rbind, strsplit( colnames(ROS_Norm_Resid)[5:length(colnames(ROS_Norm_Resid))],  "_" ))
+write.table(ROS_Samps, file="ROS_CEU_SamplesToTrain.tsv", col.names =F, row.names=F, sep="\t", quote=F)
+```
+
+## Fix FamFile
+```{r FamFix, cache=TRUE}
+FAM <- as.data.frame(fread( synGet(Fam)$path))
+
+
+```
+
+## Push Results to Synapse
+```{r synapse.parameters, include=FALSE, cache=TRUE}
+
+FAM <- as.data.frame(fread( synGet('syn20820122')$path))
+MSBB <-  as.data.frame(fread( synGet('syn11384608')$path))
+ROSMAP <- as.data.frame(fread( synGet('syn3191087')$path))
+row.names(ROSMAP) <- ROSMAP$projid
+ROSMAP_ID <- as.data.frame(fread( synGet('syn3382527')$path))
+#mayo <- as.data.frame(fread( synGet('syn3817650')$path))
+#MAYO <- as.data.frame(fread( synGet('syn10648406')$path))
+MAYO <- as.data.frame(fread( synGet('syn19164046')$path))
+mayo <- as.data.frame(fread( synGet('syn19164050')$path))
+
+
+#MSBB 
+row.names(MSBB) <- MSBB$sampleIdentifier
+name <- FAM[ FAM$V2 %in% row.names(MSBB) == T, ]$V2
+MSBB <- MSBB[name,]
+
+
+Sex<-c(1,2)
+names(Sex) <- c('M', 'F')
+MSBB$SEX.inferred <- Sex[MSBB$SEX.inferred]
+row.names(FAM)<-FAM$V2
+FAM[ row.names(MSBB), ]$V5 <- MSBB$SEX.inferred
+
+#Mayo --Needs Work
+mayo <- mayo[complete.cases(mayo$Gender),]
+MAYO <- MAYO[complete.cases(MAYO$Sex),]
+
+NewMayo <- as.data.frame( rbind( cbind( MAYO$SampleID,MAYO$Sex), cbind( mayo$SampleID,mayo$Gender)) )
+NewMayo<- NewMayo[!duplicated(NewMayo),]
+NewMayo <- as.data.frame( cbind( as.character(NewMayo$V1),as.character(NewMayo$V2), gsub("_CER","",gsub("_TCX","",NewMayo$V1))) )
+NewMayo$V2 <- Sex[as.character( NewMayo$V2 )]
+
+names <- FAM[ FAM$V1 == 0 ,]$V2
+#table(names %in% NewMayo$V3)
+
+NewMayo <- NewMayo[ !duplicated(NewMayo$V3), ]
+row.names(NewMayo) <- NewMayo$V3
+NewMayo <- NewMayo[ names, ]
+
+FAM[ names ,]$V5 <- NewMayo[ names, ]$V2
+FAM$V5[is.na(FAM$V5)] <- 0
+##Missing Sex
+#1950 excluded from RNA-Sequncing - Pathology not meeting control criteria (BRAAK>3.0)
+#1957 excluded from RNA-Sequncing - Pathology not meeting control criteria (BRAAK>3.0)
+
+
+
+```
+
+##Knit to Synapse
+```{r knitmd, eval=FALSE, cache=FALSE, include=FALSE}
+library(synapser)
+library(knit2synapse) 
+
+synLogin()
+knit2synapse::createAndKnitToFolderEntity(file = "",
+                                          parentId ="",
+                                          folderName = '')
+```
