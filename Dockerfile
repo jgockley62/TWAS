@@ -17,14 +17,14 @@ RUN apt-get update\
 && pip install synapseclient\
 && pip install aws-mfa\
 && pip install awsmfa\
-#&& git clone https://github.com/jgockley62/TWAS.git\
+&& git clone https://github.com/jgockley62/TWAS.git\
 && mkdir TWAS/bin\
 && wget http://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20190617.zip\
 && unzip plink_linux_x86_64_20190617.zip\
 && mv plink TWAS/bin \
 && rm toy.* \
-&& wget http://s3.amazonaws.com/plink2-assets/plink2_linux_x86_64_20190910.zip\
-&& unzip plink2_linux_x86_64_20190910.zip\
+&& wget http://s3.amazonaws.com/plink2-assets/plink2_linux_x86_64_20191002.zip\
+&& unzip plink2_linux_x86_64_20191002.zip\
 && mv plink2 TWAS/bin \
 && R -e "install.packages('BiocManager')"\
 && R -e "BiocManager::install('biomaRt')"\
