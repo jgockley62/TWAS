@@ -36,7 +36,7 @@ echo "username = <USR>" >> ~/.synapseConfig
 echo "password = <PASWD>" >> ~/.synapseConfig
 ```
 
-```{bash PLINKSetup, echo=F, include = T, results='hide', eval=T }
+```{bash PLINKSetup, results='hide', echo=TRUE}
 mkdir ~/TWAS/bin
 wget -q -P ~/TWAS/bin http://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20190617.zip 
 unzip -d ~/TWAS/bin/ ~/TWAS/bin/plink_linux_x86_64_20190617.zip
@@ -49,7 +49,7 @@ rm ~/TWAS/bin/LICENSE
 ```
 
 ## MSBB RNA-Seq: Average Across Brain Regions, Filter for INDV. w/Genotype Data, Rename Samples with Genotype ID 
-```{r MSBBRNA, echo=F, results='hide', cache = FALSE}
+```{r MSBBRNA, results='hide', echo=TRUE, cache = FALSE}
 library(data.table)
 
 Process_MSBB <- function( dna, exp, id){
@@ -113,7 +113,7 @@ dCorrect_Resid_MSBB <- Process_MSBB('syn11384608', 'syn20801798', 'syn6100548')
 ```
 
 ## Mayo RNA-Seq: Remove Cerebellum, Filter for INDV. w/Genotype Data, Rename Samples with Genotype ID 
-```{r MayoRNA, echo=T, results='hide', cache = FALSE, echo=FALSE}
+```{r MayoRNA, results='hide', echo=TRUE, cache = FALSE}
 #Get Geno Names From FAM File
 FAM <- as.data.frame(fread( syn_temp$get('syn20820122')$path))
 FAM <- FAM[ (grepl('ROS', FAM[,1])) == F , ]
@@ -150,7 +150,7 @@ dCorrect_Resid_MAYO <- Mayo_filt( 'syn20801991', FAM, 0 )
 ```
 
 ## ROSMAP RNA-Seq: Filter for INDV. w/Genotype Data and Rename Samples with Genotype ID 
-```{r ROSMAPoRNA, echo=T, results='hide', cache = FALSE, echo=FALSE}
+```{r ROSMAPoRNA, results='hide', echo=TRUE, cache = FALSE}
 #SVA: 'syn8456704'
 #SVA+Diag: 'syn20800652'
 Ros_Filt <- function(Exp, name, Trans, Fam, Var){
@@ -205,7 +205,7 @@ dNorm_Resid_RM <-Ros_Filt( 'syn20800652', 'syn5879839', 'syn3382527','syn2082012
 * Check for no Patch Contig Nonsense
 * Print Sample ID List
 * Filter Genotypes for RNA Samples
-```{r Merge RNASeq, echo=T, results='hide', cache = FALSE, echo=FALSE}
+```{r Merge RNASeq, results='hide', echo=TRUE, cache = FALSE}
 #Common Genes:
 GNames <- names( table(c( as.character(Norm_Resid_MSBB$ensembl_gene_id), as.character(Norm_Resid_MAYO$ensembl_gene_id), as.character(Norm_Resid_RM$ensembl_gene_id)  ))[ table(c( as.character(Norm_Resid_MSBB$ensembl_gene_id), as.character(Norm_Resid_MAYO$ensembl_gene_id), as.character(Norm_Resid_RM$ensembl_gene_id)  )) == 3] )
 
@@ -285,7 +285,7 @@ write.table(ROS_Samps, file="ROS_RNASamples.tsv", col.names =F, row.names=F, sep
 ```
 
 ## Fix FamFile
-```{r FamFix, cache=TRUE}
+```{r FamFix, results='hide', echo=TRUE, cache=TRUE}
 FAM <- as.data.frame(fread( syn_temp$get('syn20820122')$path))
 MSBB <-  as.data.frame(fread( syn_temp$get('syn11384608')$path))
 MSBB_Clin <- as.data.frame(fread( syn_temp$get('syn6101474')$path))
@@ -359,7 +359,7 @@ write.table(FAM, file='New_Fam.fam', row.names = F, col.names=F, quote=F, sep=" 
 
 
 ## Filter Genotype data
-```{bash FilterGenos, include=FALSE, cache=TRUE}
+```{bash FilterGenos, results='hide', echo=TRUE, cache=TRUE}
 #source /root/.bashrc
 PATH=$PATH:~/TWAS/bin/
 CORES=`expr $(nproc) - 2`
@@ -380,7 +380,7 @@ plink --threads $CORES --bfile CEU_AncestryMatched_Genotypes --keep ROS_RNASampl
 ```
 
 
-```{r sanity check}
+```{r sanitycheck, include=TRUE, echo=TRUE}
 FAM <- as.data.frame(fread('All_CEU_ToTrainForTWAS.fam'))
 row.names(FAM) <- paste0( FAM[,1], '_', FAM[,2] )
 table(row.names(FAM) %in% colnames(Diag_Resid))
@@ -395,8 +395,8 @@ ROS_Norm_Resid_train <- ROS_Norm_Resid[ , c("TargetID","Gene_Symbol","Chr","Coor
 
 ```
 
-## Push Results to Synapse
-```{r synapse.parameters.head, include=FALSE, cache=TRUE}
+## Push Results to Synapse -- Contained in ProcessData.Rmd if needed for reference
+```{r synapse.parameters.head, include=FALSE, results='hide', echo=FALSE, cache=TRUE}
 parentId = 'syn18936948';
 activityName = 'Processed TWAS Training Data';
 activityDescription = 'Data from processing and hamonizing CEU ancestry matched Genotypes with available RNA-Seq profiles which were aligned to GRCh38 but annotated with hg19 TSS sites here';
@@ -406,7 +406,7 @@ thisRepo <- githubr::getRepo(repository = "jgockley62/TWAS", ref="branch", refNa
 thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thisFileName))
 ```
 
-```{r synapse.parameters, include=FALSE, cache=TRUE}
+```{r synapse.parameters, include=FALSE, results='hide', echo=FALSE, cache=TRUE}
 activityName = 'Processed TWAS Training Data';
 activityDescription = 'Data from processing and hamonizing CEU ancestry matched Genotypes with available RNA-Seq profiles';
 
@@ -557,6 +557,18 @@ syn_temp$setAnnotations(ENRICH_OBJ, annotations = Var.all.annotations)
 
 ```
 
+```{bash Clean, echo=T, results='hide'}
+rm -r ~/TWAS/bin/
+rm *.bed
+rm *.fam
+rm *.bim
+rm *.log
+rm *.tsv
+```
+
+### R Source Code
+[Github](`r thisFile`)
+
 ##Knit to Synapse
 ```{r knitmd, eval=FALSE, cache=FALSE, include=FALSE}
 synapseclient <- reticulate::import("synapseclient")
@@ -567,6 +579,7 @@ library(data.table)
 
 setwd("~/TWAS/code/")
 source("~/TWAS/utilityFunctions/knitfile2synapseClient.R")
+source("~/TWAS/utilityFunctions/hook_synapseMdSyntax_plot.R")
 
 createAndKnitToFolderEntityClient(file = "ProcessData.Rmd",
                                           parentId ="syn18936948",

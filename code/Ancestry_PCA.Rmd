@@ -27,7 +27,7 @@ maybe# ln -s /usr/bin/python /usr/local/bin/python
 
 ## Login to Synapse Will need to replace with your credentials
 ```{bash Login, echo=T, results='hide', eval=FALSE}
-source /root/.bashrc
+#source /root/.bashrc
 synapse login -u <USR> -p <PSWD> --rememberMe
 
 #Alternativly you can setup a credentials file as such:
@@ -37,11 +37,24 @@ echo "username = <USR>" >> ~/.synapseConfig
 echo "password = <PASWD>" >> ~/.synapseConfig
 ```
 
+## Pull Plink and Plink2
+```{bash PLINKSetup, results='hide', echo=TRUE}
+mkdir ~/TWAS/bin
+wget -q -P ~/TWAS/bin http://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20190617.zip 
+unzip -d ~/TWAS/bin/ ~/TWAS/bin/plink_linux_x86_64_20190617.zip
+wget -q -P ~/TWAS/bin  http://s3.amazonaws.com/plink2-assets/plink2_linux_x86_64_20191002.zip
+unzip -d ~/TWAS/bin/ ~/TWAS/bin/plink2_linux_x86_64_20191002.zip
+
+rm ~/TWAS/bin/*.zip
+rm ~/TWAS/bin/toy.*
+rm ~/TWAS/bin/LICENSE
+```
+
 ## Pull 1000Genomes down and process
 * Pull out reference populations (CEU, YRI, CHB, JPT)
 ```{bash pull_1000Genomes, echo=T, results='hide', cache = FALSE}
-source /root/.bashrc
-PATH=$PATH:/home/jgockley/TWAS/TWAS/bin/
+#source /root/.bashrc
+PATH=$PATH:~/TWAS/bin/
 #PATH=$PATH:TWAS/bin/
 CORES=`expr $(nproc) - 2`
 
@@ -118,8 +131,8 @@ rm MergedChrs.txt
 * Merge across chromosomes
 * Filter for 1000G SNPs
 ```{bash ProcessMSBB, echo=T, results='hide', cache = FALSE}
-source /root/.bashrc
-PATH=$PATH:/home/jgockley/TWAS/TWAS/bin/
+#source /root/.bashrc
+PATH=$PATH:~/TWAS/bin/
 CORES=`expr $(nproc) - 2`
 
 ##Pull VCF Files from Synapse
@@ -206,8 +219,8 @@ OUT.close()
 
 ### Finalize the MSBB LD SNP-Set Derived from WGS
 ```{bash FinalizeMSBB, echo=T, results='hide', cache = FALSE  }
-source /root/.bashrc
-PATH=$PATH:/home/jgockley/TWAS/TWAS/bin/
+#source /root/.bashrc
+PATH=$PATH:~/TWAS/bin/
 CORES=`expr $(nproc) - 2`
 
 #Check the SNP-Set
@@ -229,8 +242,8 @@ plink --bfile GWASTotal --silent --threads $CORES --make-bed --out MSBB_Prelimin
 
 ## Process MAYO Genotyping Data
 ```{bash MAYO, echo=T, results='hide', cache = FALSE}
-source /root/.bashrc
-PATH=$PATH:/home/jgockley/TWAS/TWAS/bin/
+#source /root/.bashrc
+PATH=$PATH:~/TWAS/bin/
 CORES=`expr $(nproc) - 2`
 
 #Download
@@ -286,8 +299,8 @@ OUT.close()
 
 ### Finalize the Mayo LD SNP-Set Derived from imputed genotyping
 ```{bash CheckMayo, echo=T, results='hide', cache = FALSE}
-source /root/.bashrc
-PATH=$PATH:/home/jgockley/TWAS/TWAS/bin/
+#source /root/.bashrc
+PATH=$PATH:~/TWAS/bin/
 CORES=`expr $(nproc) - 2`
 
 #Check the SNP-Set
@@ -309,8 +322,8 @@ rm Mayo_LDREF_Filt.*
 
 ## Process ROSMAP Genotyping Data
 ```{bash DosageToHardCalls, echo=T, results='hide', cache = FALSE}
-source /root/.bashrc
-PATH=$PATH:/home/jgockley/TWAS/TWAS/bin/
+#source /root/.bashrc
+PATH=$PATH:~/TWAS/bin/
 CORES=`expr $(nproc) - 2`
 
 #Synapse gets:
@@ -436,8 +449,8 @@ OUT2.close()
 
 ##Merge the Genotype Sets and Preform PCA
 ```{bash MergeAndCall, cache = FALSE, echo=T, results='hide'}
-source /root/.bashrc
-PATH=$PATH:/home/jgockley/TWAS/TWAS/bin/
+#source /root/.bashrc
+PATH=$PATH:~/TWAS/bin/
 CORES=`expr $(nproc) - 2`
 
 mv ROSMAP_tempRenamed.bim ROSMAP_temp.bim
@@ -683,22 +696,22 @@ write.table( file = "CEU_AncestryClustered_INDVs.tsv", CEUs[ CEUs$Ancestry == 'C
 
 ## Filter Genotypes for CEU Ancestry 
 ```{bash FIlterAncestry, cache=FALSE, echo=TRUE, results='hide'}
-source /root/.bashrc
-PATH=$PATH:/home/jgockley/TWAS/TWAS/bin/
+#source /root/.bashrc
+PATH=$PATH:~/TWAS/bin/
 CORES=`expr $(nproc) - 2`
 
 plink --threads $CORES --bfile Merged_GenoTypes --keep CEU_AncestryClustered_INDVs.tsv --make-bed --out CEU_AncestryMatched_Genotypes
 ```
 
-```{r synapse.parameters, include=FALSE, cache=TRUE}
+```{r synapse.parameters, include=FALSE, echo=FALSE, results='hide', cache=TRUE}
 library(githubr)
 parentId = 'syn18936948';
 activityName = 'Ancestry Analysis';
 activityDescription = 'Processing and Analysis of WGS and Genotype data along with ancestry analysis with 1000 genome\'s CEU, CHB, YRI, and JPT populations';
 thisFileName <- 'Ancestry_PCA.Rmd'
 # Github link
-thisRepo <- getRepo(repository = "jgockley62/TWAS", ref="branch", refName='master')
-thisFile <- getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thisFileName))
+thisRepo <- githubr::getRepo(repository = "jgockley62/TWAS", ref="branch", refName='master')
+thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thisFileName))
 ```
 
 ```{r Store, cache = FALSE, echo=FALSE, results='hide', eval=FALSE}
@@ -736,33 +749,23 @@ all.annotations = list(
 #STORE
 #CEU Indvs
 #write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CEU_AncestryClustered_INDVs.tsv', sep = '\t', quote=F)
-ENRICH_OBJ = File('CEU_AncestryClustered_INDVs.tsv', 
-                  name = 'Samples Clustered to CEU Ancestry', 
-                  parentId = CODE$properties$id)
-ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
-                      executed = thisFile, activityDescription = activityDescription)
-all.annotations$dataSubType = 'CEU_INDV'
-synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='CEU_AncestryClustered_INDVs.tsv', name = 'Samples Clustered to CEU Ancestry', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+EXP.all.annotations$dataSubType = 'CEU_INDV'
+syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
 #PCA EginVecs
 #write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'Total_PCA.eigenvec', sep = '\t', quote=F)
-ENRICH_OBJ = File('Total_PCA.eigenvec', 
-                  name = 'PCA Eigen Vectors', 
-                  parentId = CODE$properties$id)
-ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
-                      executed = thisFile, activityDescription = activityDescription)
-all.annotations$dataSubType = 'EigenVecs'
-synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='Total_PCA.eigenvec', name = 'PCA Eigen Vectors', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+EXP.all.annotations$dataSubType = 'EigenVecs'
+syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
 #PCA EginVecs
 #write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'Total_PCA.eigenval', sep = '\t', quote=F)
-ENRICH_OBJ = File('Total_PCA.eigenval', 
-                  name = 'PCA Eigen Values', 
-                  parentId = CODE$properties$id)
-ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
-                      executed = thisFile, activityDescription = activityDescription)
-all.annotations$dataSubType = 'EigenValues'
-synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='Total_PCA.eigenval', name = 'PCA Eigen Values', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+EXP.all.annotations$dataSubType = 'EigenValues'
+syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
 ###Store Genos Seperatly 
 CODE <- Folder(name = "Ancestry_Clustered_Genotypes", parentId = parentId)
@@ -770,64 +773,69 @@ CODE <- synStore(CODE)
 
 #Geno Bed
 #write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CEU_AncestryMatched_Genotypes.bed', sep = '\t', quote=F)
-ENRICH_OBJ = File('CEU_AncestryMatched_Genotypes.bed', 
-                  name = 'Genotype Bed File', 
-                  parentId = CODE$properties$id)
-ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
-                      executed = thisFile, activityDescription = activityDescription)
-all.annotations$dataSubType = 'GWAS'
-synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='CEU_AncestryMatched_Genotypes.bed', name = 'Genotype Bed File', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+EXP.all.annotations$dataSubType = 'GWAS'
+syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
 
 #Geno Bim
 #write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CEU_AncestryMatched_Genotypes.bim', sep = '\t', quote=F)
-ENRICH_OBJ = File('CEU_AncestryMatched_Genotypes.bim', 
-                  name = 'Genotype Bim File', 
-                  parentId = CODE$properties$id)
-ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
-                      executed = thisFile, activityDescription = activityDescription)
-all.annotations$dataSubType = 'GWAS'
-synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='CEU_AncestryMatched_Genotypes.bim', name = 'Genotype Bim File', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+EXP.all.annotations$dataSubType = 'GWAS'
+syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
 #Geno Fam
 #write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CEU_AncestryMatched_Genotypes.fam', sep = '\t', quote=F)
-ENRICH_OBJ = File('CEU_AncestryMatched_Genotypes.fam', 
-                  name = 'Genotype Fam File', 
-                  parentId = CODE$properties$id)
-ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
-                      executed = thisFile, activityDescription = activityDescription)
-all.annotations$dataSubType = 'GWAS'
-synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='CEU_AncestryMatched_Genotypes.fam', name = 'Genotype Fam File', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  EXP.all.annotations$dataSubType = 'GWAS'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
 #Geno nosex
 #write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CEU_AncestryMatched_Genotypes.nosex', sep = '\t', quote=F)
-ENRICH_OBJ = File('CEU_AncestryMatched_Genotypes.nosex', 
-                  name = 'Genotype nosex File', 
-                  parentId = CODE$properties$id)
-ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
-                      executed = thisFile, activityDescription = activityDescription)
-all.annotations$dataSubType = 'GWAS'
-synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='CEU_AncestryMatched_Genotypes.nosex', name = 'Genotype nosex File', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  EXP.all.annotations$dataSubType = 'GWAS'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
 #Geno log
 #write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CEU_AncestryMatched_Genotypes.log', sep = '\t', quote=F)
-ENRICH_OBJ = File('CEU_AncestryMatched_Genotypes.log', 
-                  name = 'Genotype log File', 
-                  parentId = CODE$properties$id)
-ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
-                      executed = thisFile, activityDescription = activityDescription)
-all.annotations$dataSubType = 'GWAS'
-synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='CEU_AncestryMatched_Genotypes.log', name = 'Genotype log File', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  EXP.all.annotations$dataSubType = 'GWAS'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 ```
+
+```{bash Clean, echo=T, eval=F, results='hide'}
+rm -r ~/TWAS/bin/
+rm *.bed
+rm *.fam
+rm *.bim
+rm *.log
+rm *.tsv
+rm *list
+rm -r VCF/
+rm -r GWAS_Plink/
+```
+
 ### R Source Code
 [Github](`r thisFile`)
 
+##Knit to Synapse
 ```{r knitmd, eval=FALSE, cache=FALSE, include=FALSE}
-#library(synapser)
-library(knit2synapse) 
+synapseclient <- reticulate::import("synapseclient")
+syn_temp <- synapseclient$Synapse()
+syn_temp$login()
 
-synLogin()
-#knit2synapse::createAndKnitToFolderEntity(file = "Ancestry_PCA.Rmd",
-#                                          parentId ="syn18936948",
-#                                          folderName = 'Ancestry_Analysis')
+library(data.table)
+library(githubr)
+library(ggplot2)
+library(plotrix)
+library(scater)
+library(data.table)
 
+setwd("~/TWAS/code/")
+source("~/TWAS/utilityFunctions/knitfile2synapseClient.R")
+source("~/TWAS/utilityFunctions/hook_synapseMdSyntax_plot.R")
+
+createAndKnitToFolderEntityClient(file = "Ancestry_PCA.Rmd",
+                                          parentId ="syn18936948",
+                                          folderName = 'Ancestry_Analysis')
 ```
