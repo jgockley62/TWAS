@@ -26,5 +26,7 @@ Log into EC2 instance
  docker image build --build-arg USER_ID=$(id -u ${USER}) --build-arg GROUP_ID=$(id -g ${USER}) -t twas /home/${USER}/TWAS/
  
  #Open Docker container and RInstance
- docker run -v "/home/${USER}/TWAS/:/home/${USER}/TWAS/" -e USER=${USER} -e PASSWORD=HornetHockey -d -p 8787:8787 <IMAGE_ID>
+ docker run -v "/home/${USER}/TWAS/:/home/${USER}/TWAS/" -e USER=${USER} -e PASSWORD=<PASSWORD> -d -p 8787:8787 <IMAGE_ID>
 ```
+
+Now loginto RS
