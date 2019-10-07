@@ -1,35 +1,46 @@
 FROM ubuntu:16.04
+
 ##S3 awsmfa --identity-profile bridge.prod.jgockley --target-profile jgockley@sandbox --token $658059
 #_From Dockerfile containing folder run: CMD# docker build -t test ~/Software/Docker/twas/ CMD# docker run -it 
 #<IMAGE_ID> /bin/bash
-RUN apt-get update && apt-get install -y --no-install-recommends apt-utils RUN apt-get -y install r-base RUN apt-get 
--y install aptitude libcurl4-openssl-dev libxml2-dev libxml2-dev RUN apt-get -y install libssl-dev RUN apt-get -y 
-install nano RUN apt-get -y install python-dev RUN apt-get -y install plink RUN apt-get -y install git
+
+RUN apt-get update 
+RUN apt-get install -y --no-install-recommends apt-utils r-base aptitude libcurl4-openssl-dev libxml2-dev libxml2-dev libssl-dev nano python-dev install plink git
 #R Packages
 RUN echo "r <- getOption('repos'); r['CRAN'] <- 'http://cran.us.r-project.org'; options(repos = r);" > ~/.Rprofile 
-RUN Rscript -e "install.packages('devtools', dependencies=TRUE, repos='http://cran.rstudio.com/')" RUN Rscript -e 
-"install.packages('RColorBrewer', dependencies=TRUE, repos='http://cran.rstudio.com/')" RUN Rscript -e 
-"install.packages('optparse', dependencies=TRUE, repos='http://cran.rstudio.com/')" RUN Rscript -e 
-"install.packages('glmnet')" RUN Rscript -e "install.packages('methods')" RUN Rscript -e 
-"devtools::install_github('gabraham/plink2R/plink2R')" RUN Rscript -e "install.packages('data.table')" RUN Rscript 
--e "install.packages('optparse')" RUN Rscript -e "install.packages('foreach')" RUN Rscript -e 
-"install.packages('doMC')"
-#RUN Rscript -e "install.packages('synapseClient')"
-RUN Rscript -e "source('http://depot.sagebase.org/CRAN.R')" RUN Rscript -e "install.packages('synapseClient')" RUN 
-apt-get -y install wget RUN apt-get -y install nano RUN apt-get -y install cdda2wav cdrecord mkisofs RUN apt-get 
-install -y python-subprocess32 RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+RUN Rscript -e "install.packages('devtools', dependencies=TRUE, repos='http://cran.rstudio.com/')" \
+ && Rscript -e "install.packages('RColorBrewer', dependencies=TRUE, repos='http://cran.rstudio.com/')" \
+ && Rscript -e "install.packages('optparse', dependencies=TRUE, repos='http://cran.rstudio.com/')" \
+ && Rscript -e "install.packages('glmnet')" RUN Rscript -e "install.packages('methods')" \
+ && Rscript -e "devtools::install_github('gabraham/plink2R/plink2R')" \
+ && Rscript -e "install.packages('data.table')" \
+ && Rscript -e  "install.packages('optparse')" RUN Rscript -e "install.packages('foreach')" \
+ && Rscript -e "install.packages('doMC')"\
+ && Rscript -e "source('http://depot.sagebase.org/CRAN.R')" \
+ && Rscript -e "install.packages('synapseClient')" 
+
+RUN apt-get -y install wget nano install cdda2wav cdrecord mkisofs python-subprocess32 
+
+RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py \ 
 #RUN apt-get install -y multiprocessing
-RUN python get-pip.py RUN pip install synapseclient RUN pip install awscli RUN pip install aws-mfa RUN pip install 
-awsmfa RUN pip install pyliftover RUN pip install pprint RUN pip install Biopython RUN pip install bitarray RUN pip 
-install pybedtools
+ && python get-pip.py \
+ && RUN pip install synapseclient \
+ && RUN pip install awscli \
+ && RUN pip install aws-mfa \
+ && RUN pip install awsmfa \
+ && pip install pyliftover \
+ && pip install pprint \
+ && pip install Biopython \
+ && pip install bitarray \
+ && pip install pybedtools
 # Command Line plink2 capability - Works! (need to try binary on AWS for compatability test)
 RUN wget http://s3.amazonaws.com/plink2-assets/alpha1/plink2_linux_x86_64.zip && \
  unzip plink2_linux_x86_64.zip -d /usr/local/bin/ && \
- rm -f plink2_linux_x86_64.zip RUN wget 
-https://www.ebi.ac.uk/arrayexpress/files/E-GEUV-1/GD462.GeneQuantRPKM.50FN.samplename.resk10.txt.gz && \
-  gunzip GD462.GeneQuantRPKM.50FN.samplename.resk10.txt.gz RUN wget 
-https://cnsgenomics.com/software/gcta/gcta_1.92.0beta3.zip && \
-        unzip gcta_1.92.0beta3.zip
+ rm -f plink2_linux_x86_64.zip
+RUN wget https://www.ebi.ac.uk/arrayexpress/files/E-GEUV-1/GD462.GeneQuantRPKM.50FN.samplename.resk10.txt.gz \
+  && wget gunzip GD462.GeneQuantRPKM.50FN.samplename.resk10.txt.gz 
+  && wget https://cnsgenomics.com/software/gcta/gcta_1.92.0beta3.zip \
+  && unzip gcta_1.92.0beta3.zip
 # Get the fusion software - Works!
 RUN wget https://github.com/gusevlab/fusion_twas/archive/master.zip && \
  unzip master.zip && \
@@ -59,5 +70,5 @@ https://www.well.ox.ac.uk/~cfreeman/software/gwas/gtool_v0.7.5_x86_64.tgz && \
 && \
         tar -zxvf fcgene-1.0.7.tar.gz RUN wget http://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20190304.zip 
 && \
-        unzip plink_linux_x86_64_20190304.zip RUN wget 
-https://www.ebi.ac.uk/arrayexpress/files/E-GEUV-1/GD462.GeneQuantRPKM.50FN.samplename.resk10.txt.gz RUN cd /home
+        unzip plink_linux_x86_64_20190304.zip RUN wget https://www.ebi.ac.uk/arrayexpress/files/E-GEUV-1/GD462.GeneQuantRPKM.50FN.samplename.resk10.txt.gz RUN cd /home
+
