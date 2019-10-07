@@ -84,5 +84,12 @@ chmod 777 gemma-0.98.1-linux-static
 wget http://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20190304.zip
 unzip plink_linux_x86_64_20190304.zip
 rm toy.*
+
+synapse get syn20835005
+synapse get syn20835007
+synapse get syn20834996
+
+synapse get syn20857313
+synapse get syn20857312
 ```
 
