@@ -30,7 +30,7 @@ Log into EC2 instance
 ```
 
 Now loginto RStudio Instance
-https://<AWS_Instance_IP):8787
+https://<AWS_Instance_IP>:8787
 
 ```{r}
 setwd("~/TWAS/code/")
@@ -52,3 +52,5 @@ createAndKnitToFolderEntityClient(file = "ProcessData.Rmd",
 
 
 ```
+
+## Train Weights on AWS Instance
