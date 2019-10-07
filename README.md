@@ -13,4 +13,18 @@
 * code/Ancestry_PCA.Rmd
 
 ### Harmonization of Sample names and RNA-Seq Dataframe Finalization can be found here:
-* code/.Rmd
+* code/ProcessData.Rmd
+
+## Running Code
+
+Log into EC2 instance
+```{bash}
+ #Pull Repo
+ git clone https://github.com/jgockley62/TWAS.git
+ 
+ #Build Image from Dockerfile
+ docker image build --build-arg USER_ID=$(id -u ${USER}) --build-arg GROUP_ID=$(id -g ${USER}) -t twas /home/${USER}/TWAS/
+ 
+ #Open Docker container and RInstance
+ docker run -v "/home/${USER}/TWAS/:/home/${USER}/TWAS/" -e USER=${USER} -e PASSWORD=HornetHockey -d -p 8787:8787 <IMAGE_ID>
+```
