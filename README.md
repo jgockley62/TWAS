@@ -54,3 +54,33 @@ createAndKnitToFolderEntityClient(file = "ProcessData.Rmd",
 ```
 
 ## Train Weights on AWS Instance
+
+docker build -t train /home/${USER}/TWAS_Training/
+
+screen
+
+docker run -it <Image_ID> /bin/bash
+
+pip install awscli
+pip install aws-mfa
+pip install awsmfa
+apt-get install -y python-subprocess32
+apt-get install -y multiprocessing
+pip install scipy
+pip install pandas
+apt-get install python-dev
+pip install bitarray
+pip install pyliftover
+pip install pprint
+pip install Biopython
+
+
+wget https://github.com/genetics-statistics/GEMMA/releases/download/0.98.1/gemma-0.98.1-linux-static.gz
+gunzip gemma-0.98.1-linux-static.gz
+chmod 777 gemma-0.98.1-linux-static
+
+
+wget http://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20190304.zip
+unzip plink_linux_x86_64_20190304.zip
+rm toy.*
+
