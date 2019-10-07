@@ -46,5 +46,12 @@ RUN apt-get update\
 && R -e "install.packages('reticulate', repos = 'http://cran.us.r-project.org')"\
 && R -e "install.packages('optmatch', repos = 'http://cran.us.r-project.org')" \
 && R -e "BiocManager::install('scater')" \
-&& R -e "install.packages('tidyr')"
+&& R -e "install.packages('tidyr')"\
+&& R -e "install.packages('glmnet', repos = 'http://cran.us.r-project.org')"\
+&& R -e "BiocManager::install('sva')"\
+&& R -e "BiocManager::install('WGCNA')"\
+&& R -e "BiocManager::install('cqn')"\
+&& R -e "BiocManager::install('limma')"\
+&& R -e "BiocManager::install('edgeR')"\
+&& R -e "BiocManager::install('ComplexHeatmap')"
 

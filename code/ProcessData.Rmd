@@ -26,7 +26,7 @@ Create a ~/.synapseConfig file in the container, but do not push a container con
 
 ## Login to Synapse Will need to replace with your credentials
 ```{bash Login, echo=T, results='hide', eval=FALSE}
-source /root/.bashrc
+#source /root/.bashrc
 synapse login -u <USR> -p <PSWD> --rememberMe
 
 #Alternativly you can setup a credentials file as such:
@@ -36,12 +36,12 @@ echo "username = <USR>" >> ~/.synapseConfig
 echo "password = <PASWD>" >> ~/.synapseConfig
 ```
 
-```{bash PLINKSetup, results='hide', echo=TRUE}
+```{bash PLINKSetup, results='hide', eval=F, echo=TRUE}
 mkdir ~/TWAS/bin
 wget -q -P ~/TWAS/bin http://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20190617.zip 
 unzip -d ~/TWAS/bin/ ~/TWAS/bin/plink_linux_x86_64_20190617.zip
-wget -q -P ~/TWAS/bin  http://s3.amazonaws.com/plink2-assets/plink2_linux_x86_64_20191002.zip
-unzip -d ~/TWAS/bin/ ~/TWAS/bin/plink2_linux_x86_64_20191002.zip
+wget -q -P ~/TWAS/bin http://s3.amazonaws.com/plink2-assets/plink2_linux_x86_64_20191006.zip
+unzip -d ~/TWAS/bin/ ~/TWAS/bin/plink2_linux_x86_64_20191006.zip
 
 rm ~/TWAS/bin/*.zip
 rm ~/TWAS/bin/toy.*
@@ -56,9 +56,6 @@ Process_MSBB <- function( dna, exp, id){
   #'@dna synID of Geno samples eg 'syn11384608'
   #'@exp synID of expression data eg 'syn8485026'
   #'@id synID of id translators  eg. 'syn6100548'
-  #dna<-'syn11384608'
-  #exp<-'syn8485026'
-  #id<-'syn6100548'
   
   DNA <- fread(syn_temp$get(dna)$path)
   Expression <- read.table(syn_temp$get(exp)$path, header=T)
@@ -159,7 +156,6 @@ Ros_Filt <- function(Exp, name, Trans, Fam, Var){
   #'@Trans 'syn3382527'
   #'@Fam a .fam file of the ROS samps syn20820122
   #'@Var 1=Nondiagnosis correcte 0=Diagnosis Corrected
-
   # eg. Ros_Filt( 'syn8456704', 'syn5879839', 'syn3382527','syn20820122')
   
   FAM <- as.data.frame(fread( syn_temp$get(Fam)$path))
@@ -211,10 +207,10 @@ GNames <- names( table(c( as.character(Norm_Resid_MSBB$ensembl_gene_id), as.char
 
 #Combine Into One DataFrame
 Comb <- function( MSBB, Mayo, RM, Names){
-  #MSBB <- Norm_Resid_MSBB
-  #Mayo <- Norm_Resid_MAYO
-  #RM <- Norm_Resid_RM
-  #Names <- GNames
+  #'@MSBB The MSBB Expression Set Data Frame
+  #'@Mayo The Mayo Expression Set Data Frame
+  #'@RM The ROSMAP Expression Set Data Frame
+  #'@Names Gene names Vector
   
   row.names(MSBB) <- as.character(MSBB$ensembl_gene_id)
   row.names(Mayo) <- as.character(Mayo$ensembl_gene_id)
@@ -243,7 +239,6 @@ row.names(hg19) <- hg19[,1]
 #Filter out the 231 Genes that don't have coherent annotations between GRCH38 and GRCH 37
 Norm_Resid <- Norm_Resid[ (row.names(Norm_Resid) %in% row.names(hg19)) == T, ]
 Diag_Resid <- Diag_Resid[ (row.names(Diag_Resid) %in% row.names(hg19)) == T, ]
-
 
 #Finalize
 Norm_Resid <- as.data.frame( cbind( 
@@ -278,7 +273,6 @@ write.table(Tot_Samps, file="ALL_RNASamplesComb.tsv", col.names =F, row.names=F,
 ROS <- colnames(Norm_Resid)[ grepl('ROS', colnames(Norm_Resid)) == T | grepl('MAP', colnames(Norm_Resid)) == T ]
 ROS_Norm_Resid <- Norm_Resid[ ,c("TargetID", "Gene_Symbol", "Chr", "Coord", ROS) ]
 ROS_Diag_Resid <- Diag_Resid[ ,c("TargetID", "Gene_Symbol", "Chr", "Coord", ROS) ]
-
 
 ROS_Samps <- do.call( rbind, strsplit( colnames(ROS_Norm_Resid)[5:length(colnames(ROS_Norm_Resid))],  "_" ))
 write.table(ROS_Samps, file="ROS_RNASamples.tsv", col.names =F, row.names=F, sep=" ", quote=F)
@@ -357,7 +351,6 @@ FAM[ grepl('ROS', FAM$V2) == T  | grepl('MAP', FAM$V2) == T , ]$V1 <- FAM[ grepl
 write.table(FAM, file='New_Fam.fam', row.names = F, col.names=F, quote=F, sep=" ")
 ```
 
-
 ## Filter Genotype data
 ```{bash FilterGenos, results='hide', echo=TRUE, cache=TRUE}
 #source /root/.bashrc
@@ -378,7 +371,6 @@ plink --threads $CORES --bfile CEU_AncestryMatched_Genotypes --keep ALL_RNASampl
 #Extract ROS_Only:
 plink --threads $CORES --bfile CEU_AncestryMatched_Genotypes --keep ROS_RNASamples.tsv --make-bed --out ROSMAPonly_CEU_ToTrainForTWAS
 ```
-
 
 ```{r sanitycheck, include=TRUE, echo=TRUE}
 FAM <- as.data.frame(fread('All_CEU_ToTrainForTWAS.fam'))
@@ -457,7 +449,7 @@ Basic.annotations = list(
 write.table(Norm_Resid, file="ALL_RNA_Seq_SVAadusted.tsv", col.names =F, row.names=F, sep="\t", quote=F)
 Syns_Used_SVA_EXP <- c('syn11384608', 'syn8485026', 'syn6100548', 'syn8456704', 'syn5879839', 'syn3382527','syn20820122', 'syn8466825', 'syn20820122')
 
-ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_RNA_Seq_SVAadusted.tsv', name = 'Total Merged and region Avereaged RNA-Seq with Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_SVA_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_RNA_Seq_SVAadusted.tsv', name = 'Total Merged and region Averaged RNA-Seq with Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_SVA_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
 EXP.all.annotations$dataSubType = 'residualGeneExpForeQTL'
 syn_temp$setAnnotations(ENRICH_OBJ, annotations = EXP.all.annotations)
 
@@ -465,7 +457,7 @@ syn_temp$setAnnotations(ENRICH_OBJ, annotations = EXP.all.annotations)
 write.table(Diag_Resid, file="ALL_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv", col.names =F, row.names=F, sep="\t", quote=F)
 Syns_Used_Diagnosis_EXP <- c('syn20801991', 'syn11384608', 'syn20801798', 'syn6100548',  'syn20800652', 'syn5879839', 'syn3382527','syn20820122', 'syn20820122')
 
-ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv', name = 'Total Merged and region Avereaged RNA-Seq with Diagnosis Regressed Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_Diagnosis_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv', name = 'Total Merged and region Averaged RNA-Seq with Diagnosis Regressed Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_Diagnosis_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
     EXP.all.annotations$dataSubType = 'residualGeneExpForDiagnosisRegressedeQTL'
     syn_temp$setAnnotations(ENRICH_OBJ, annotations = EXP.all.annotations)
 
@@ -473,7 +465,7 @@ ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_RNA_Seq_SVAadusted_D
 write.table(Norm_Resid_train, file="ALL_CEU_RNA_Seq_SVAadusted.tsv", col.names =F, row.names=F, sep="\t", quote=F)
 Syns_Used_SVA_EXP <- c('syn11384608', 'syn8485026', 'syn6100548', 'syn8456704', 'syn5879839', 'syn3382527','syn20820122', 'syn8466825', 'syn20820122')
 
-ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_CEU_RNA_Seq_SVAadusted.tsv', name = 'CEU Merged and region Avereaged RNA-Seq with Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_SVA_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_CEU_RNA_Seq_SVAadusted.tsv', name = 'CEU Merged and region Averaged RNA-Seq with Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_SVA_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
   EXP.all.annotations$dataSubType = 'residualGeneExpForeQTL'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = EXP.all.annotations)
 
@@ -481,7 +473,7 @@ ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_CEU_RNA_Seq_SVAadust
 write.table(Diag_Resid_train, file="ALL_CEU_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv", col.names =F, row.names=F, sep="\t", quote=F)
 Syns_Used_Diagnosis_EXP <- c('syn20801991', 'syn11384608', 'syn20801798', 'syn6100548',  'syn20800652', 'syn5879839', 'syn3382527','syn20820122', 'syn20820122')
 
-ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_CEU_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv', name = 'CEU Merged and region Avereaged RNA-Seq with Diagnosis Regressed Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_Diagnosis_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_CEU_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv', name = 'CEU Merged and region Averaged RNA-Seq with Diagnosis Regressed Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_Diagnosis_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
   EXP.all.annotations$dataSubType = 'residualGeneExpForDiagnosisRegressedeQTL'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = EXP.all.annotations)
 
@@ -517,9 +509,7 @@ Syns <- c( 'syn20800652', 'syn5879839', 'syn3382527','syn20820122')
 ENRICH_OBJ_RM_List <- syn_temp$store( synapseclient$File( path='ROS_RNASamples.tsv', name = 'ROSMAP Indv with RNA-Seq Profiles in AMP-Ad For Filtering', parentId=CODE$properties$id ), used = Syns, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
   syn_temp$setAnnotations(ENRICH_OBJ_RM_List, annotations = Basic.annotations)
 
-
-  
-#PLINK ALL -- STORE IN SEPERATE FOLDER INCASE PHI LIMITATIONS APPLY LATER
+###PLINK ALL -- STORE IN SEPERATE FOLDER INCASE PHI LIMITATIONS APPLY LATER
   CODE <- syn_temp$store(synapseclient$Folder(name = "Ancestry_Clustered_Genotypes", parentId = parentId))
   Syns <- c( 'syn20820120', 'syn20820121', 'syn20820122', ENRICH_OBJ_Tot_list$properties$id  )
 #FAM  

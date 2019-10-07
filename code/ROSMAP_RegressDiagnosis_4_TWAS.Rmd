@@ -30,12 +30,10 @@ library(edgeR)
 library(biomaRt)
 library(RColorBrewer)
 library(cqn)
-library(synapser)
 library(knitr)
 library(doParallel)
 library(foreach)
 library(githubr)
-
 cl = makeCluster(detectCores()-2)
 registerDoParallel(cl)
 options(xtable.type="html")
@@ -48,18 +46,13 @@ knitr::opts_chunk$set(
   cache = TRUE)
 ```
 
-
-```{r synLogin}
-synLogin()
-```
-
 ### Data download
 Obtain count matrix and metadata from synapse
 ```{r download.data}
 # Download expression data
 COUNT_ID <- 'syn8691134';
 ALL_USED_IDs <- COUNT_ID
-COUNT_OBJ <- synGet(COUNT_ID, version = 1)
+COUNT_OBJ <- syn_temp$get(COUNT_ID, version = 1)
 COUNT <- read.table(COUNT_OBJ$path, header=T, sep='\t', check.names = F, row.names = 1)
 COUNT[,grep('150_120419', colnames(COUNT))[2]] = NULL
 # Convert rownames of counts from tracking id to ensemble gene id
@@ -71,28 +64,28 @@ rownames(COUNT) = tmp[rownames(COUNT), 'ensembl_gene_id']
 # Get clinical metadata
 METADATA.CLINICAL_ID <- 'syn3191087'
 ALL_USED_IDs[length(ALL_USED_IDs)+1] = METADATA.CLINICAL_ID
-METADATA.CLINICAL_OBJ <- synGet(METADATA.CLINICAL_ID, version = 3)
+METADATA.CLINICAL_OBJ <- syn_temp$get(METADATA.CLINICAL_ID, version = 3)
 METADATA.CLINICAL <- read.table(METADATA.CLINICAL_OBJ$path,sep=',',header=T)
 # Get clinical metadata with uncensored ages
 METADATA.CLINICAL_ID1 <- 'syn7116000'
 ALL_USED_IDs[length(ALL_USED_IDs)+1] = METADATA.CLINICAL_ID1
-METADATA.CLINICAL_OBJ1 <- synGet(METADATA.CLINICAL_ID1, version = 1)
+METADATA.CLINICAL_OBJ1 <- syn_temp$get(METADATA.CLINICAL_ID1, version = 1)
 METADATA.CLINICAL1 <- read.table(METADATA.CLINICAL_OBJ1$path,sep=',',header=T)
 # Get technical covariates
 METADATA.TECH_ID <- 'syn4300313'
 ALL_USED_IDs[length(ALL_USED_IDs)+1] = METADATA.TECH_ID
-METADATA.TECH_OBJ <- synGet(METADATA.TECH_ID, version = 1)
+METADATA.TECH_OBJ <- syn_temp$get(METADATA.TECH_ID, version = 1)
 METADATA.TECH <- read.table(METADATA.TECH_OBJ$path,sep='\t',header=T)
 # Get picard metrics from synapse
 METADATA.PICARD_ID <- 'syn8698240';
 ALL_USED_IDs[length(ALL_USED_IDs)+1] = METADATA.PICARD_ID
-METADATA.PICARD <- synGet(METADATA.PICARD_ID, version = 2)$path %>%
+METADATA.PICARD <- syn_temp$get(METADATA.PICARD_ID, version = 2)$path %>%
   data.table::fread() %>%
   dplyr::rename(Sampleid = sample)
 # Fix error in technical covariates data
 KEY_ID <- 'syn3382527'
 ALL_USED_IDs[length(ALL_USED_IDs)+1] = KEY_ID  
-KEY <- synGet(KEY_ID, version = 7)$path %>%
+KEY <- syn_temp$get(KEY_ID, version = 7)$path %>%
   read.csv %>% 
   dplyr::filter(!is.na(rnaseq_id)) %>%
   dplyr::select(projid, rnaseq_id) %>%
@@ -115,7 +108,7 @@ METADATA <- METADATA %>%
 colnames(METADATA) = gsub('AlignmentSummaryMetrics__','',colnames(METADATA))
 colnames(METADATA) = gsub('RnaSeqMetrics__','',colnames(METADATA))
 # Get gene specific parameters from synapse
-GENE.PARAM = synGet('syn8449369', version = 2)$path %>%
+GENE.PARAM = syn_temp$get('syn8449369', version = 2)$path %>%
   data.table::fread(data.table = FALSE)
 ALL_USED_IDs = c(ALL_USED_IDs, 'syn8449369')
 GENE.LEN = dplyr::select(GENE.PARAM, ensembl_gene_id, gene.length) %>% 
@@ -590,8 +583,8 @@ activityName = 'Covariate and Diagnosis Regression';
 activityDescription = 'Covariate analysis and Regrsison of AD Diagnosis of aligned effective counts with GRCh37 with CQN normalisation (DLPFC)';
 thisFileName <- 'ROSMAP_RegressDiagnosis_4_TWAS.Rmd'
 # Github link
-thisRepo <- getRepo(repository = "jgockley62/TWAS", ref="branch", refName='master')
-thisFile <- getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thisFileName))
+thisRepo <- githubr::getRepo(repository = "jgockley62/TWAS", ref="branch", refName='master')
+thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thisFileName))
 ```
 
 ### Store files in synapse
@@ -599,15 +592,12 @@ thisFile <- getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thi
 activityName = 'Covariate and Diagnosis Regression';
 activityDescription = 'Covariate analysis and Regrsison of AD Diagnosis of aligned effective counts with GRCh37 with CQN normalisation (DLPFC)';
 
-# Code WTF is this??
-CODE <- Folder(name = "ROSMAP", parentId = parentId)
-CODE <- synStore(CODE)
+CODE <- syn_temp$store(synapseclient$Folder(name = "ROSMAP", parentId = parentId))
 
 #Set Used SynIDs For Provenance
 Syns_Used <- c("syn3382527", "syn4300313", "syn8449369", "syn7116000",
   "syn8691134", "syn3191087", "syn8698240"
 )
-
 # Set annotations
 all.annotations = list(
   dataType = 'mRNA',
@@ -623,123 +613,95 @@ all.annotations = list(
   rnaquantification = 'RSEM',
   genomeAssemblyID = 'GRCh37'
 )
-
 # Store SVA results
 write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'ROSMAP_SVA_Diagnosis_Corrected.tsv', sep = '\t', quote=F)
-ENRICH_OBJ = File('ROSMAP_SVA_Diagnosis_Corrected.tsv', 
-                  name = 'Normalised, covariates, surrogate and Diagnosis variable adjusted residual expression (for eQTL)', 
-                  parentId = CODE$properties$id)
-ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
-                      executed = thisFile, activityDescription = activityDescription)
-all.annotations$dataSubType = 'residualGeneExpForeQTL'
-synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ROSMAP_SVA_Diagnosis_Corrected.tsv', name = 'Normalised, covariates, surrogate and Diagnosis variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$dataSubType = 'residualGeneExpForeQTL'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
 # Store covariates
 COVARIATES = rownameToFirstColumn(COVARIATES, 'SampleID')
 write.table(COVARIATES, file = 'ROSMAP_SVA_Diagnosis_Covariates.tsv', row.names = F, sep = '\t', quote=F)
-ENRICH_OBJ = File('ROSMAP_SVA_Diagnosis_Covariates.tsv', 
-                  name = 'Covariates', 
-                  parentId = CODE$properties$id)
-ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
-                      executed = thisFile, activityDescription = activityDescription)
-all.annotations$dataSubType = 'covariates'
-synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ROSMAP_SVA_Diagnosis_Covariates.tsv', name = 'Covariates', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$dataSubType = 'covariates'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
 # Store filtered counts
 PROCESSED_COUNTS$filteredExprMatrix$counts %>%
   rownameToFirstColumn('ensembl_gene_id') %>%
   write.table(file = 'ROSMAP_DLPFC_Diagnosis_Regressed_Counts.tsv', sep = '\t', row.names=F, quote=F)
-ENRICH_OBJ = File('ROSMAP_DLPFC_Diagnosis_Regressed_Counts.tsv', 
-                  name = 'Counts (filtered raw)', 
-                  parentId = CODE$properties$id)
-ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
-                      executed = thisFile, activityDescription = activityDescription)
-all.annotations$dataSubType = 'filteredCounts'
-synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ROSMAP_DLPFC_Diagnosis_Regressed_Counts.tsv', name = 'Counts (filtered raw)', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$dataSubType = 'filteredCounts'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
 # Store Estimated counts
 NEW.COUNTS %>%
   rownameToFirstColumn('ensembl_gene_id') %>%
   write.table(file = 'ROSMAP_DLPFC_Diagnosis_Regressed_eCounts.tsv', sep = '\t', row.names=F, quote=F)
-ENRICH_OBJ = File('ROSMAP_DLPFC_Diagnosis_Regressed_Counts.tsv', 
-                  name = 'Counts (estimated)', 
-                  parentId = CODE$properties$id)
-ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
-                      executed = thisFile, activityDescription = activityDescription)
-all.annotations$dataSubType = 'estimatedCounts'
-synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
-
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ROSMAP_DLPFC_Diagnosis_Regressed_Counts.tsv', name = 'Counts (estimated)', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$dataSubType = 'estimatedCounts'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
+  
 # Store logCPM
 CQN.GENE_EXPRESSION$y %>%
   rownameToFirstColumn('ensembl_gene_id') %>%
   write.table(file = 'ROSMAP_DLPFC_Diagnosis_Regressed_logCPM.tsv', sep = '\t', row.names=F, quote=F)
-ENRICH_OBJ = File('ROSMAP_DLPFC_Diagnosis_Regressed_logCPM.tsv', 
-                  name = 'Counts (filtered logCPM)', 
-                  parentId = CODE$properties$id)
-ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
-                      executed = thisFile, activityDescription = activityDescription)
-all.annotations$dataSubType = 'filteredLCPM'
-synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ROSMAP_DLPFC_Diagnosis_Regressed_logCPM.tsv', name = 'Counts (filtered logCPM)', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$dataSubType = 'filteredLCPM'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
 # Store cqn offsets
 CQN.GENE_EXPRESSION$offset %>%
   rownameToFirstColumn('ensembl_gene_id') %>%
   write.table(file = 'ROSMAP_DLPFC_Diagnosis_Regressed_offset.tsv', sep = '\t', row.names=F, quote=F)
-ENRICH_OBJ = File('ROSMAP_DLPFC_Diagnosis_Regressed_offset.tsv', 
-                  name = 'Gene length and GC content offset', 
-                  parentId = CODE$properties$id)
-ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
-                      executed = thisFile, activityDescription = activityDescription)
-all.annotations$dataSubType = 'offset'
-synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ROSMAP_DLPFC_Diagnosis_Regressed_offset.tsv', name = 'Gene length and GC content offset', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$dataSubType = 'offset'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
 # Store design matrix
 MODEL1 %>%
   rownameToFirstColumn('SampleID') %>%
   write.table(file = 'ROSMAP_DLPFC_Diagnosis_Regressed_Design.tsv', sep = '\t', row.names=F, quote=F)
-ENRICH_OBJ = File('ROSMAP_DLPFC_Diagnosis_Regressed_Design.tsv', 
-                  name = 'Design Matrix', 
-                  parentId = CODE$properties$id)
-ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
-                      executed = thisFile, activityDescription = activityDescription)
-all.annotations$dataSubType = 'designMatrix'
-synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ROSMAP_DLPFC_Diagnosis_Regressed_Design.tsv', name = 'Design Matrix', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$dataSubType = 'designMatrix'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
 # Store surrogate variables
 SURR.VAR %>%
   rownameToFirstColumn('SampleID') %>%
   write.table(file = 'ROSMAP_DLPFC_Diagnosis_Regressed_SurVar.tsv', sep = '\t', row.names=F, quote=F)
-ENRICH_OBJ = File('ROSMAP_DLPFC_Diagnosis_Regressed_SurVar.tsv', 
-                  name = 'Surrogate Variables', 
-                  parentId = CODE$properties$id)
-ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
-                      executed = thisFile, activityDescription = activityDescription)
-all.annotations$dataSubType = 'surrogateVariables'
-synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
-
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ROSMAP_DLPFC_Diagnosis_Regressed_SurVar.tsv', name = 'Surrogate Variables', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$dataSubType = 'surrogateVariables'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
+  
 # Store residual gene expression for network analysis
 RESIDUAL.NET.GENE_EXPRESSION %>%
   rownameToFirstColumn('ensembl_gene_id') %>%
   write.table(file = 'ROSMAP_DLPFC_Diagnosis_Regressed_netResidualExpression.tsv', sep = '\t', row.names=F, quote=F)
-ENRICH_OBJ = File('ROSMAP_DLPFC_Diagnosis_Regressed_netResidualExpression.tsv', 
-                  name = 'Normalised, covariates and Diagnosis removed residual expression (for network analysis)', 
-                  parentId = CODE$properties$id)
-ENRICH_OBJ = synStore(ENRICH_OBJ, used = Syns_Used, activityName = activityName, 
-                      executed = thisFile, activityDescription = activityDescription)
-all.annotations$dataSubType = 'residualGeneExpForNetAnlz'
-synSetAnnotations(ENRICH_OBJ, annotations = all.annotations)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ROSMAP_DLPFC_Diagnosis_Regressed_netResidualExpression.tsv', name = 'Normalised, covariates and Diagnosis removed residual expression (for network analysis)', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$dataSubType = 'residualGeneExpForNetAnlz'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
-#stopCluster(cl)
+stopCluster(cl)
 ```
 
+```{r DelFiles, echo=T, results='hide'}
+system('rm *.tsv')
+```
 ### R Source Code
 [Github](`r thisFile`)
 
 ```{r knitmd, eval=FALSE, cache=FALSE, include=FALSE}
-library(synapser)
-library(knit2synapse) # get the package from devtools::install_github('Sage-Bionetworks/knit2synapse')
-synLogin()
-knit2synapse::createAndKnitToFolderEntity(file = "/home/jgockley/TWAS/code/ROSMAP_RegressDiagnosis_4_TWAS.Rmd",
+synapseclient <- reticulate::import("synapseclient")
+syn_temp <- synapseclient$Synapse()
+syn_temp$login()
+
+setwd("~/TWAS/code/")
+source("~/TWAS/utilityFunctions/knitfile2synapseClient.R")
+source("~/TWAS/utilityFunctions/hook_synapseMdSyntax_plot.R")
+
+createAndKnitToFolderEntityClient(file = "ROSMAP_RegressDiagnosis_4_TWAS.Rmd",
                                           parentId ="syn20798011",
                                           folderName = 'ROSMAP')
+
 ```
