@@ -55,6 +55,7 @@ createAndKnitToFolderEntityClient(file = "ProcessData.Rmd",
 
 ## Train Weights on AWS Instance
 
+```
 docker build -t train /home/${USER}/TWAS_Training/
 
 screen
@@ -83,4 +84,5 @@ chmod 777 gemma-0.98.1-linux-static
 wget http://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20190304.zip
 unzip plink_linux_x86_64_20190304.zip
 rm toy.*
+```
 
