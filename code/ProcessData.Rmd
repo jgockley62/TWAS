@@ -385,6 +385,20 @@ table(row.names(FAM) %in% colnames(ROS_Diag_Resid))
 ROS_Diag_Resid_train <- ROS_Diag_Resid[ , c("TargetID","Gene_Symbol","Chr","Coord", row.names(FAM) )]
 ROS_Norm_Resid_train <- ROS_Norm_Resid[ , c("TargetID","Gene_Symbol","Chr","Coord", row.names(FAM) )]
 
+Diag_Resid_train <- Diag_Resid_train[ (Diag_Resid_train$Chr %in% c(1:22)) == T, ]
+Norm_Resid_train <- Norm_Resid_train[ (Norm_Resid_train$Chr %in% c(1:22)) == T, ]
+
+ROS_Diag_Resid_train <- ROS_Diag_Resid_train[ (ROS_Diag_Resid_train$Chr %in% c(1:22)) == T, ]
+ROS_Norm_Resid_train <- ROS_Norm_Resid_train[ (ROS_Norm_Resid_train$Chr %in% c(1:22)) == T, ]
+
+colnames(Diag_Resid_train) <- c( colnames(Diag_Resid_train[1:4]), do.call( rbind, strsplit( colnames(Diag_Resid_train[ 5:length(colnames(Diag_Resid_train)) ]), "_") )[,2] )
+
+colnames(Norm_Resid_train) <- c( colnames(Norm_Resid_train[1:4]), do.call( rbind, strsplit( colnames(Norm_Resid_train[ 5:length(colnames(Norm_Resid_train)) ]), "_") )[,2] )
+
+colnames(ROS_Diag_Resid_train) <- c( colnames(ROS_Diag_Resid_train[1:4]), do.call( rbind, strsplit( colnames(ROS_Diag_Resid_train[ 5:length(colnames(ROS_Diag_Resid_train)) ]), "_") )[,2] )
+
+colnames(ROS_Norm_Resid_train) <- c( colnames(ROS_Norm_Resid_train[1:4]), do.call( rbind, strsplit( colnames(ROS_Norm_Resid_train[ 5:length(colnames(ROS_Norm_Resid_train)) ]), "_") )[,2] )
+
 ```
 
 ## Push Results to Synapse -- Contained in ProcessData.Rmd if needed for reference
