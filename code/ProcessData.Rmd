@@ -446,7 +446,7 @@ Basic.annotations = list(
 )
 
 ## TOTAL SVA-only Exp
-write.table(Norm_Resid, file="ALL_RNA_Seq_SVAadusted.tsv", col.names =F, row.names=F, sep="\t", quote=F)
+write.table(Norm_Resid, file="ALL_RNA_Seq_SVAadusted.tsv", col.names =T, row.names=F, sep="\t", quote=F)
 Syns_Used_SVA_EXP <- c('syn11384608', 'syn8485026', 'syn6100548', 'syn8456704', 'syn5879839', 'syn3382527','syn20820122', 'syn8466825', 'syn20820122')
 
 ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_RNA_Seq_SVAadusted.tsv', name = 'Total Merged and region Averaged RNA-Seq with Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_SVA_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
@@ -454,7 +454,7 @@ EXP.all.annotations$dataSubType = 'residualGeneExpForeQTL'
 syn_temp$setAnnotations(ENRICH_OBJ, annotations = EXP.all.annotations)
 
 ## TOTAL Diagnosis Exp
-write.table(Diag_Resid, file="ALL_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv", col.names =F, row.names=F, sep="\t", quote=F)
+write.table(Diag_Resid, file="ALL_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv", col.names =T, row.names=F, sep="\t", quote=F)
 Syns_Used_Diagnosis_EXP <- c('syn20801991', 'syn11384608', 'syn20801798', 'syn6100548',  'syn20800652', 'syn5879839', 'syn3382527','syn20820122', 'syn20820122')
 
 ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv', name = 'Total Merged and region Averaged RNA-Seq with Diagnosis Regressed Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_Diagnosis_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
@@ -462,7 +462,7 @@ ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_RNA_Seq_SVAadusted_D
     syn_temp$setAnnotations(ENRICH_OBJ, annotations = EXP.all.annotations)
 
 ## CEU SVA-only Exp
-write.table(Norm_Resid_train, file="ALL_CEU_RNA_Seq_SVAadusted.tsv", col.names =F, row.names=F, sep="\t", quote=F)
+write.table(Norm_Resid_train, file="ALL_CEU_RNA_Seq_SVAadusted.tsv", col.names =T, row.names=F, sep="\t", quote=F)
 Syns_Used_SVA_EXP <- c('syn11384608', 'syn8485026', 'syn6100548', 'syn8456704', 'syn5879839', 'syn3382527','syn20820122', 'syn8466825', 'syn20820122')
 
 ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_CEU_RNA_Seq_SVAadusted.tsv', name = 'CEU Merged and region Averaged RNA-Seq with Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_SVA_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
@@ -470,7 +470,7 @@ ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_CEU_RNA_Seq_SVAadust
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = EXP.all.annotations)
 
 ## CEU Diagnosis Exp
-write.table(Diag_Resid_train, file="ALL_CEU_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv", col.names =F, row.names=F, sep="\t", quote=F)
+write.table(Diag_Resid_train, file="ALL_CEU_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv", col.names =T, row.names=F, sep="\t", quote=F)
 Syns_Used_Diagnosis_EXP <- c('syn20801991', 'syn11384608', 'syn20801798', 'syn6100548',  'syn20800652', 'syn5879839', 'syn3382527','syn20820122', 'syn20820122')
 
 ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_CEU_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv', name = 'CEU Merged and region Averaged RNA-Seq with Diagnosis Regressed Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_Diagnosis_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
@@ -479,7 +479,7 @@ ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_CEU_RNA_Seq_SVAadust
 
 #ROSMAP only Expression
   ## CEU SVA-only Exp -- ROSMAP Only
-write.table(ROS_Norm_Resid_train, file="ROS_CEU_RNA_Seq_SVAadusted.tsv", col.names =F, row.names=F, sep="\t", quote=F)
+write.table(ROS_Norm_Resid_train, file="ROS_CEU_RNA_Seq_SVAadusted.tsv", col.names =T, row.names=F, sep="\t", quote=F)
 Syns_Used_SVA_EXP <- c('syn8456704', 'syn5879839', 'syn3382527','syn20820122' )
 
 ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ROS_CEU_RNA_Seq_SVAadusted.tsv', name = 'CEU ROSMAP Only RNA-Seq with Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_SVA_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
@@ -488,7 +488,7 @@ ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ROS_CEU_RNA_Seq_SVAadust
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = EXP.all.annotations)
 
   ## CEU Diagnosis Exp -- ROSMAP Only
-write.table(ROS_Diag_Resid_train, file="ROS_CEU_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv", col.names =F, row.names=F, sep="\t", quote=F)
+write.table(ROS_Diag_Resid_train, file="ROS_CEU_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv", col.names =T, row.names=F, sep="\t", quote=F)
 Syns_Used_Diagnosis_EXP <- c( 'syn20800652', 'syn5879839', 'syn3382527','syn20820122')
 ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ROS_CEU_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv', name = 'CEU ROSMAP Only RNA-Seq with Diagnosis Regressed Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_Diagnosis_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
   EXP.all.annotations$dataSubType = 'residualGeneExpForDiagnosisRegressedeQTL'
