@@ -20,6 +20,7 @@ RUN Rscript -e "install.packages('devtools', dependencies=TRUE, repos='http://cr
  && Rscript -e "install.packages('foreach', dependencies=TRUE)" \
  && Rscript -e "install.packages('doMC', dependencies=TRUE)"\
  && Rscript -e "source('http://depot.sagebase.org/CRAN.R')" \
+ && Rscript -e "install.packages('glmnet', repos = 'http://cran.us.r-project.org')" \
  && Rscript -e "install.packages('synapseClient')" 
 
 RUN apt-get install -y wget nano cdda2wav cdrecord mkisofs python-subprocess32 
