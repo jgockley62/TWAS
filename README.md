@@ -62,11 +62,17 @@ screen
 
 docker run -it <Image_ID> /bin/bash
 
+cd fusion_twas-master
+
 synapse get syn20835005
 synapse get syn20835007
 synapse get syn20834996
 
 synapse get syn20857313
 synapse get syn20857312
+
+git clone https://github.com/jgockley62/TWAS.git
+cp TWAS/code/Multi_Threaded_Weights.py .
+cp TWAS/code/FUSION.compute_weights_Parallel.R .
 ```
 
