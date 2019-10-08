@@ -5,7 +5,7 @@ FROM ubuntu:16.04
 #<IMAGE_ID> /bin/bash
 
 RUN apt-get update 
-RUN apt-get install -y --no-install-recommends apt-utils r-base aptitude build-essential libcurl4-openssl-dev libxml2-dev libxml2-dev libssl-dev nano python-dev plink git curl
+RUN apt-get install -y --no-install-recommends apt-utils libblas-dev liblapack-dev gfortran r-base aptitude build-essential libcurl4-openssl-dev libxml2-dev libxml2-dev libssl-dev nano python-dev plink git curl
 #R Packages
 RUN echo "r <- getOption('repos'); r['CRAN'] <- 'http://cran.us.r-project.org'; options(repos = r);" > ~/.Rprofile 
 
@@ -14,7 +14,8 @@ RUN Rscript -e "install.packages('devtools', dependencies=TRUE, repos='http://cr
  && Rscript -e "install.packages('optparse', dependencies=TRUE, repos='http://cran.rstudio.com/')" \
  && Rscript -e "install.packages('glmnet', dependencies=TRUE)" \
  && Rscript -e "install.packages('methods', dependencies=TRUE)" \
- #&& Rscript -e "devtools::install_github('gabraham/plink2R/plink2R')" \
+ && Rscript -e "devtools::install_github('RcppCore/RcppEigen', dependencies=TRUE)" \
+ && Rscript -e "devtools::install_github('gabraham/plink2R/plink2R', dependencies=TRUE)" \
  && Rscript -e "install.packages('data.table', dependencies=TRUE)" \
  && Rscript -e "install.packages('foreach', dependencies=TRUE)" \
  && Rscript -e "install.packages('doMC', dependencies=TRUE)"\
@@ -25,7 +26,6 @@ RUN apt-get install -y wget nano cdda2wav cdrecord mkisofs python-subprocess32
 
 RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py \ 
  && python get-pip.py 
-
 #RUN apt-get install -y multiprocessing
 
 RUN pip install synapseclient \
@@ -35,16 +35,15 @@ RUN pip install synapseclient \
  && pip install pyliftover \
  && pip install pprint \
  && pip install Biopython \
- && pip install bitarray \ 
- && pip install pandas \
- && pip install scipy
-# && pip install pybedtools
+ && pip install bitarray \
+ && pip install scipy \
+ && pip install pandas
+ #&& pip install pybedtools
 
 #Command Line plink2 capability - Works! (need to try binary on AWS for compatability test)
 RUN wget http://s3.amazonaws.com/plink2-assets/alpha1/plink2_linux_x86_64.zip \
   && unzip plink2_linux_x86_64.zip -d /usr/local/bin/ \
   && rm -f plink2_linux_x86_64.zip
-
 RUN wget https://www.ebi.ac.uk/arrayexpress/files/E-GEUV-1/GD462.GeneQuantRPKM.50FN.samplename.resk10.txt.gz \
   && gunzip GD462.GeneQuantRPKM.50FN.samplename.resk10.txt.gz \
   && wget https://cnsgenomics.com/software/gcta/bin/gcta_1.92.4beta.zip \
@@ -86,10 +85,10 @@ RUN git clone https://github.com/gusevlab/fusion_twas.git \
 
 RUN wget https://www.ebi.ac.uk/arrayexpress/files/E-GEUV-1/GD462.GeneQuantRPKM.50FN.samplename.resk10.txt.gz 
 
-RUN wget -O /fusion_twas-master/gemma-0.98.1-linux-static.gz https://github.com/genetics-statistics/GEMMA/releases/download/0.98.1/gemma-0.98.1-linux-static.gz \
+RUN wget -O /fusion_twas-master/ https://github.com/genetics-statistics/GEMMA/releases/download/0.98.1/gemma-0.98.1-linux-static.gz \
  && gunzip /fusion_twas-master/gemma-0.98.1-linux-static.gz \
  && chmod 777 /fusion_twas-master/gemma-0.98.1-linux-static
 
-RUN wget -O /fusion_twas-master/plink_linux_x86_64_20190304.zip http://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20190304.zip \
- && unzip -f /fusion_twas-master/plink_linux_x86_64_20190304.zip
-# && rm /fusion_twas-master/toy.*
+RUN wget -O /fusion_twas-master/ http://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20190304.zip
+ && unzip /fusion_twas-master/plink_linux_x86_64_20190304.zip
+ && rm /fusion_twas-master/toy.*
