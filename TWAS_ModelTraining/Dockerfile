@@ -25,6 +25,7 @@ RUN apt-get install -y wget nano cdda2wav cdrecord mkisofs python-subprocess32
 
 RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py \ 
  && python get-pip.py 
+
 #RUN apt-get install -y multiprocessing
 
 RUN pip install synapseclient \
@@ -34,7 +35,9 @@ RUN pip install synapseclient \
  && pip install pyliftover \
  && pip install pprint \
  && pip install Biopython \
- && pip install bitarray 
+ && pip install bitarray \ 
+ && pip install pandas \
+ && pip install scipy
 # && pip install pybedtools
 
 #Command Line plink2 capability - Works! (need to try binary on AWS for compatability test)
@@ -83,4 +86,10 @@ RUN git clone https://github.com/gusevlab/fusion_twas.git \
 
 RUN wget https://www.ebi.ac.uk/arrayexpress/files/E-GEUV-1/GD462.GeneQuantRPKM.50FN.samplename.resk10.txt.gz 
 
+RUN wget -O /fusion_twas-master/gemma-0.98.1-linux-static.gz https://github.com/genetics-statistics/GEMMA/releases/download/0.98.1/gemma-0.98.1-linux-static.gz \
+ && gunzip /fusion_twas-master/gemma-0.98.1-linux-static.gz \
+ && chmod 777 /fusion_twas-master/gemma-0.98.1-linux-static
 
+RUN wget -O /fusion_twas-master/plink_linux_x86_64_20190304.zip http://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20190304.zip \
+ && unzip -f /fusion_twas-master/plink_linux_x86_64_20190304.zip
+# && rm /fusion_twas-master/toy.*
