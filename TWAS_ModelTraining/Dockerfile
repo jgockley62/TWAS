@@ -90,8 +90,8 @@ RUN wget -O /fusion_twas-master/ https://github.com/genetics-statistics/GEMMA/re
  && gunzip /fusion_twas-master/gemma-0.98.1-linux-static.gz \
  && chmod 777 /fusion_twas-master/gemma-0.98.1-linux-static
 
-RUN wget -O /fusion_twas-master/ http://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20190304.zip
- && unzip /fusion_twas-master/plink_linux_x86_64_20190304.zip
+RUN wget -O /fusion_twas-master/ http://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20190304.zip \
+ && unzip /fusion_twas-master/plink_linux_x86_64_20190304.zip \
  && rm /fusion_twas-master/toy.*
 
 
