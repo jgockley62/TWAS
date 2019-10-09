@@ -93,3 +93,5 @@ RUN wget -O /fusion_twas-master/ https://github.com/genetics-statistics/GEMMA/re
 RUN wget -O /fusion_twas-master/ http://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20190304.zip
  && unzip /fusion_twas-master/plink_linux_x86_64_20190304.zip
  && rm /fusion_twas-master/toy.*
+
+
