@@ -72,11 +72,13 @@ synapse get syn20857313
 synapse get syn20857312
 
 git clone https://github.com/jgockley62/TWAS.git
-cp TWAS/code/Multi_Threaded_Weights.py .
+cp TWAS/code/WorksMultiThreaded.py .
 cp TWAS/code/FUSION.compute_weights_Parallel.R .
 
 awk '{ print $1"\t"$2 }' All_CEU_ToTrainForTWAS.fam > Total_IDs.txt
 
-python Multi_Threaded_Weights.py ALL_CEU_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv All_CEU_ToTrainForTWAS 1361
+#Adjust values PRE_GEXP, INPT, cores
+
+python WorksMultiThreaded.py
 ```
 
