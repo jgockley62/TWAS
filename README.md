@@ -56,7 +56,7 @@ createAndKnitToFolderEntityClient(file = "ProcessData.Rmd",
 ## Train Weights on AWS Instance
 
 ```
-docker build -t train /home/${USER}/TWAS_Training/
+docker build -t train /home/${USER}/TWAS/TWAS_ModelTraining/
 
 screen
 
