@@ -371,7 +371,7 @@ FAM[ grepl('ROS', FAM$V2) == T  | grepl('MAP', FAM$V2) == T , ]$V1 <- FAM[ grepl
 #Write New FAM to file
 write.table(FAM, file='New_Fam.fam', row.names = F, col.names=F, quote=F, sep=" ")
 
-tail(FAM[ FAM$V1[ grepl('ROS', FAM$V1) == F ] $ FAM$V1[ grepl('MAP', FAM$V1) == F ] ,])
+#tail(FAM[ FAM$V1[ grepl('ROS', FAM$V1) == F ] $ FAM$V1[ grepl('MAP', FAM$V1) == F ] ,])
 # & FAM$V1[ grepl('ROS', FAM$V1) == F ]
 MSBB_List <- FAM[ FAM$V1 != '0', ] 
 MSBB_List <- MSBB_List[ MSBB_List$V1[ grepl('MAP', MSBB_List$V1) == F ] ,]
@@ -616,6 +616,9 @@ rm *.fam
 rm *.bim
 rm *.log
 rm *.tsv
+rm MSBB_SamplesToExpand.txt
+rm *.map
+rm *.ped
 ```
 
 ### R Source Code
