@@ -4,7 +4,7 @@ RUN apt-get update\
 && apt-get install -y libpython-dev\
 && apt-get install -y libpython3-dev\
 && apt-get install -y dpkg-dev zlib1g-dev libssl-dev libffi-dev\
-&& apt-get install -y curl nano less libcurl4-openssl-dev\
+&& apt-get install -y curl nano less libcurl4-openssl-dev gawk\
 && apt-get install -y git\
 && apt-get install -y tabix\
 && apt-get install -y bcftools\

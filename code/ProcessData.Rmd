@@ -40,8 +40,8 @@ echo "password = <PASWD>" >> ~/.synapseConfig
 mkdir ~/TWAS/bin
 wget -q -P ~/TWAS/bin http://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20190617.zip 
 unzip -d ~/TWAS/bin/ ~/TWAS/bin/plink_linux_x86_64_20190617.zip
-wget -q -P ~/TWAS/bin http://s3.amazonaws.com/plink2-assets/plink2_linux_x86_64_20191012.zip
-unzip -d ~/TWAS/bin/ ~/TWAS/bin/plink2_linux_x86_64_20191012.zip
+wget -q -P ~/TWAS/bin http://s3.amazonaws.com/plink2-assets/plink2_linux_x86_64_20191015.zip
+unzip -d ~/TWAS/bin/ ~/TWAS/bin/plink2_linux_x86_64_20191015.zip
 
 rm ~/TWAS/bin/*.zip
 rm ~/TWAS/bin/toy.*
@@ -93,7 +93,7 @@ Process_MSBB <- function( dna, exp, id){
   
   INDVs <- as.data.frame(INDVs)
   INDVs$GenoID <- DNA[ INDVs$individualIdentifier, ]$sampleIdentifier
-  INDVs$NewID <- paste0(INDVs$GenoID, '_', INDVs$BrodmannArea )
+  INDVs$NewID <- paste0( INDVs$BrodmannArea, '_' , INDVs$GenoID )
   row.names(INDVs) <- INDVs$sampleIdentifier
   INDVs[ colnames(Expression), ]$NewID 
 
@@ -287,7 +287,9 @@ Norm_Resid <- Norm_Resid[ with(Norm_Resid, order( Chr, Coord)), ]
 Diag_Resid <- Diag_Resid[ with(Diag_Resid, order( Chr, Coord)), ]
 
 #Filter for CEU Ancestry Matched Training Cohort
-Tot_Samps <- do.call( rbind, strsplit( colnames(Norm_Resid)[5:length(colnames(Norm_Resid))],  "_" ))
+Tot_Samps <- cbind( colnames(Norm_Resid)[5:length(colnames(Norm_Resid))], 
+                    do.call( rbind, strsplit( colnames(Norm_Resid)[5:length(colnames(Norm_Resid))],  "_" ))[,2]
+                  )
 write.table(Tot_Samps, file="ALL_RNASamplesComb.tsv", col.names =F, row.names=F, sep=" ", quote=F)
 
 #Output the ROSMAP INDV CEU Matched Training Cohort
@@ -295,14 +297,16 @@ ROS <- colnames(Norm_Resid)[ grepl('ROS', colnames(Norm_Resid)) == T | grepl('MA
 ROS_Norm_Resid <- Norm_Resid[ ,c("TargetID", "Gene_Symbol", "Chr", "Coord", ROS) ]
 ROS_Diag_Resid <- Diag_Resid[ ,c("TargetID", "Gene_Symbol", "Chr", "Coord", ROS) ]
 
-ROS_Samps <- do.call( rbind, strsplit( colnames(ROS_Norm_Resid)[5:length(colnames(ROS_Norm_Resid))],  "_" ))
+ROS_Samps <- cbind( colnames(ROS_Norm_Resid)[5:length(colnames(ROS_Norm_Resid))],
+                    do.call( rbind, strsplit( colnames(ROS_Norm_Resid)[5:length(colnames(ROS_Norm_Resid))],  "_" ))[,2]
+                  )
 write.table(ROS_Samps, file="ROS_RNASamples.tsv", col.names =F, row.names=F, sep=" ", quote=F)
 ```
 
 ## Fix FamFile
 ```{r FamFix, results='hide', echo=TRUE, cache=TRUE}
 FAM <- as.data.frame(fread( syn_temp$get('syn20820122')$path))
-MSBB <-  as.data.frame(fread( syn_temp$get('syn11384608')$path))
+MSBB <- as.data.frame(fread( syn_temp$get('syn11384608')$path))
 MSBB_Clin <- as.data.frame(fread( syn_temp$get('syn6101474')$path))
 ROSMAP <- as.data.frame(fread( syn_temp$get('syn3191087')$path))
 row.names(ROSMAP) <- ROSMAP$projid
@@ -337,6 +341,7 @@ Sex<-c(1,2)
 names(Sex) <- c('M', 'F')
 MSBB$SEX.inferred <- Sex[MSBB$SEX.inferred]
 row.names(FAM)<-FAM$V2
+
 FAM[ row.names(MSBB), ]$V5 <- MSBB$SEX.inferred
 FAM[ row.names(MSBB_Clin), ]$V6 <- MSBB_Clin$Diagnosis
 
@@ -368,14 +373,17 @@ FAM[ '1950',]$V6 <- -9
 #Fix ROSMAP Names
 FAM[ grepl('ROS', FAM$V2) == T  | grepl('MAP', FAM$V2) == T , ]$V1 <- FAM[ grepl('ROS', FAM$V2) == T  | grepl('MAP', FAM$V2) == T , ]$V2
 
+FAM$V1 <- paste0( FAM$V1, "_", FAM$V2 )
 #Write New FAM to file
 write.table(FAM, file='New_Fam.fam', row.names = F, col.names=F, quote=F, sep=" ")
 
 #tail(FAM[ FAM$V1[ grepl('ROS', FAM$V1) == F ] $ FAM$V1[ grepl('MAP', FAM$V1) == F ] ,])
 # & FAM$V1[ grepl('ROS', FAM$V1) == F ]
-MSBB_List <- FAM[ FAM$V1 != '0', ] 
-MSBB_List <- MSBB_List[ MSBB_List$V1[ grepl('MAP', MSBB_List$V1) == F ] ,]
-MSBB_List <- MSBB_List[ MSBB_List$V1[ grepl('ROS', MSBB_List$V1) == F ] ,]
+MSBB_List <- FAM[ (dim(NewMayo)[1]+1):dim(FAM)[1], ] 
+MSBB_List <- MSBB_List[1:dim(MSBB)[1],]
+#MSBB_List <- MSBB_List[ MSBB_List$V1[ grepl('MAP', MSBB_List$V1) == F ] ,]
+#MSBB_List <- MSBB_List[ MSBB_List$V1[ grepl('ROS', MSBB_List$V1) == F ] ,]
+
 write.table( MSBB_List[,1:2], file="MSBB_SamplesToExpand.txt", quote = F, row.names = F, col.names = F, sep = "\t" )
 ```
 
@@ -391,44 +399,54 @@ synapse get syn20820121
 synapse get syn20820122
 
 #Copy over FAM File with Sex Info:
-mv New_Fam.fam CEU_AncestryMatched_Genotypes.fam
+cp New_Fam.fam CEU_AncestryMatched_Genotypes.fam
 
-#Extract the MSBB Samples to duplicate and rename to match tissues
-plink --threads $CORES --bfile CEU_AncestryMatched_Genotypes --keep MSBB_SamplesToExpand.txt --recode --out MSBB_Intermediate
+#Extract the MSBB Samples to duplicate and rename to match tissues --silent
+plink --threads $CORES --bfile CEU_AncestryMatched_Genotypes --keep MSBB_SamplesToExpand.txt --silent --recode --out MSBB_Intermediate
 
-#Repeat the rows in the ped file 4 times
+#ReName MSBB to get FID and IIDs
 awk '{for(i=0;i<4;i++)print}' MSBB_Intermediate.ped > temp
 
-gawk -v m=1 -v n=2 -v el='BM10' 'NR % m == 0 { $n = el } 1' temp > foo
-gawk -v m=2 -v n=2 -v el='BM22' 'NR % m == 0 { $n = el } 1' foo > temp
-gawk -v m=3 -v n=2 -v el='BM36' 'NR % m == 0 { $n = el } 1' temp > foo
-gawk -v m=4 -v n=2 -v el='BM44' 'NR % m == 0 { $n = el } 1' foo > temp
+gawk -v m=1 -v n=1 -v el='BM10' 'NR % m == 0 { $n = el"_"$2 } 1' temp > foo
+gawk -v m=2 -v n=1 -v el='BM22' 'NR % m == 0 { $n = el"_"$2 } 1' foo > temp
+gawk -v m=3 -v n=1 -v el='BM36' 'NR % m == 0 { $n = el"_"$2 } 1' temp > foo
+gawk -v m=4 -v n=1 -v el='BM44' 'NR % m == 0 { $n = el"_"$2 } 1' foo > temp
 mv temp MSBB_Intermediate.ped
 rm foo
+plink --threads $CORES --file MSBB_Intermediate --silent --make-bed --out MSBB_Expanded
 
-plink --threads $CORES --file MSBB_Intermediate --make-bed --out MSBB_Expanded
-plink --threads $CORES --bfile CEU_AncestryMatched_Genotypes --bmerge MSBB_Expanded --make-bed --out Rebuilt
-plink --threads $CORES --bfile Rebuilt --make-bed --out CEU_AncestryMatched_Genotypes
+#ReName ALL to get FID and IIDs
+plink --threads $CORES --bfile CEU_AncestryMatched_Genotypes --silent --recode --out temp
+gawk -v m=1 -v n=1 'NR % m == 0 { if( $2 ~ /MAP/ || $2 ~ /ROS/ ) { $n = $2"_"$2 }else{ $n = $1 } } 1' temp.ped > foo
+#gawk -v m=1 -v n=1 'NR % m == 0 { $n = $1"_"$2 } 1' temp.ped > foo2
 
-rm Rebuilt.*
-rm MSBB_Expanded.*
+mv foo temp.ped
+plink --threads $CORES --file temp --silent --make-bed --out CEU_AncestryMatched_Genotypes
+
+#Merge
+plink --threads $CORES --bfile CEU_AncestryMatched_Genotypes --bmerge MSBB_Expanded --silent --make-bed --out Rebuilt
+plink --threads $CORES --bfile Rebuilt --silent --make-bed --out CEU_AncestryMatched_Genotypes
+
+#rm Rebuilt.*
+#rm MSBB_Expanded.*
+#rm temp.*
 
 #Extract CEU
 plink --threads $CORES --bfile CEU_AncestryMatched_Genotypes --keep ALL_RNASamplesComb.tsv --silent --make-bed --out All_CEU_ToTrainForTWAS
 
 #Extract ROS_Only:
-plink --threads $CORES --bfile CEU_AncestryMatched_Genotypes --keep ROS_RNASamples.tsv --make-bed --out ROSMAPonly_CEU_ToTrainForTWAS
+plink --threads $CORES --bfile CEU_AncestryMatched_Genotypes --keep ROS_RNASamples.tsv --silent --make-bed --out ROSMAPonly_CEU_ToTrainForTWAS
 ```
 
 ```{r sanitycheck, include=TRUE, echo=TRUE}
 FAM <- as.data.frame(fread('All_CEU_ToTrainForTWAS.fam'))
-row.names(FAM) <- paste0( FAM[,1], '_', FAM[,2] )
+row.names(FAM) <- FAM[,1]
 table(row.names(FAM) %in% colnames(Diag_Resid))
 Diag_Resid_train <- Diag_Resid[ , c("TargetID","Gene_Symbol","Chr","Coord", row.names(FAM) )]
 Norm_Resid_train <- Norm_Resid[ , c("TargetID","Gene_Symbol","Chr","Coord", row.names(FAM) )]
 
 FAM <- as.data.frame(fread('ROSMAPonly_CEU_ToTrainForTWAS.fam'))
-row.names(FAM) <- paste0( FAM[,1], '_', FAM[,2] )
+row.names(FAM) <- FAM[,1]
 table(row.names(FAM) %in% colnames(ROS_Diag_Resid))
 ROS_Diag_Resid_train <- ROS_Diag_Resid[ , c("TargetID","Gene_Symbol","Chr","Coord", row.names(FAM) )]
 ROS_Norm_Resid_train <- ROS_Norm_Resid[ , c("TargetID","Gene_Symbol","Chr","Coord", row.names(FAM) )]
@@ -438,15 +456,6 @@ Norm_Resid_train <- Norm_Resid_train[ (Norm_Resid_train$Chr %in% c(1:22)) == T, 
 
 ROS_Diag_Resid_train <- ROS_Diag_Resid_train[ (ROS_Diag_Resid_train$Chr %in% c(1:22)) == T, ]
 ROS_Norm_Resid_train <- ROS_Norm_Resid_train[ (ROS_Norm_Resid_train$Chr %in% c(1:22)) == T, ]
-
-colnames(Diag_Resid_train) <- c( colnames(Diag_Resid_train[1:4]), do.call( rbind, strsplit( colnames(Diag_Resid_train[ 5:length(colnames(Diag_Resid_train)) ]), "_") )[,2] )
-
-colnames(Norm_Resid_train) <- c( colnames(Norm_Resid_train[1:4]), do.call( rbind, strsplit( colnames(Norm_Resid_train[ 5:length(colnames(Norm_Resid_train)) ]), "_") )[,2] )
-
-colnames(ROS_Diag_Resid_train) <- c( colnames(ROS_Diag_Resid_train[1:4]), do.call( rbind, strsplit( colnames(ROS_Diag_Resid_train[ 5:length(colnames(ROS_Diag_Resid_train)) ]), "_") )[,2] )
-
-colnames(ROS_Norm_Resid_train) <- c( colnames(ROS_Norm_Resid_train[1:4]), do.call( rbind, strsplit( colnames(ROS_Norm_Resid_train[ 5:length(colnames(ROS_Norm_Resid_train)) ]), "_") )[,2] )
-
 ```
 
 ## Push Results to Synapse -- Contained in ProcessData.Rmd if needed for reference
@@ -511,7 +520,7 @@ Basic.annotations = list(
 write.table(Norm_Resid, file="ALL_RNA_Seq_SVAadusted.tsv", col.names =T, row.names=F, sep="\t", quote=F)
 Syns_Used_SVA_EXP <- c('syn11384608', 'syn8485026', 'syn6100548', 'syn8456704', 'syn5879839', 'syn3382527','syn20820122', 'syn8466825', 'syn20820122')
 
-ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_RNA_Seq_SVAadusted.tsv', name = 'Total Merged and region Averaged RNA-Seq with Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_SVA_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_RNA_Seq_SVAadusted.tsv', name = 'Total RNA-Seq with Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_SVA_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
 EXP.all.annotations$dataSubType = 'residualGeneExpForeQTL'
 syn_temp$setAnnotations(ENRICH_OBJ, annotations = EXP.all.annotations)
 
@@ -519,7 +528,7 @@ syn_temp$setAnnotations(ENRICH_OBJ, annotations = EXP.all.annotations)
 write.table(Diag_Resid, file="ALL_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv", col.names =T, row.names=F, sep="\t", quote=F)
 Syns_Used_Diagnosis_EXP <- c('syn20801991', 'syn11384608', 'syn20801798', 'syn6100548',  'syn20800652', 'syn5879839', 'syn3382527','syn20820122', 'syn20820122')
 
-ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv', name = 'Total Merged and region Averaged RNA-Seq with Diagnosis Regressed Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_Diagnosis_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv', name = 'Total RNA-Seq with Diagnosis Regressed Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_Diagnosis_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
     EXP.all.annotations$dataSubType = 'residualGeneExpForDiagnosisRegressedeQTL'
     syn_temp$setAnnotations(ENRICH_OBJ, annotations = EXP.all.annotations)
 
@@ -527,7 +536,7 @@ ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_RNA_Seq_SVAadusted_D
 write.table(Norm_Resid_train, file="ALL_CEU_RNA_Seq_SVAadusted.tsv", col.names =T, row.names=F, sep="\t", quote=F)
 Syns_Used_SVA_EXP <- c('syn11384608', 'syn8485026', 'syn6100548', 'syn8456704', 'syn5879839', 'syn3382527','syn20820122', 'syn8466825', 'syn20820122')
 
-ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_CEU_RNA_Seq_SVAadusted.tsv', name = 'CEU Merged and region Averaged RNA-Seq with Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_SVA_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_CEU_RNA_Seq_SVAadusted.tsv', name = 'CEU RNA-Seq with Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_SVA_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
   EXP.all.annotations$dataSubType = 'residualGeneExpForeQTL'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = EXP.all.annotations)
 
@@ -535,7 +544,7 @@ ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_CEU_RNA_Seq_SVAadust
 write.table(Diag_Resid_train, file="ALL_CEU_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv", col.names =T, row.names=F, sep="\t", quote=F)
 Syns_Used_Diagnosis_EXP <- c('syn20801991', 'syn11384608', 'syn20801798', 'syn6100548',  'syn20800652', 'syn5879839', 'syn3382527','syn20820122', 'syn20820122')
 
-ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_CEU_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv', name = 'CEU Merged and region Averaged RNA-Seq with Diagnosis Regressed Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_Diagnosis_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_CEU_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv', name = 'CEU RNA-Seq with Diagnosis Regressed Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_Diagnosis_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
   EXP.all.annotations$dataSubType = 'residualGeneExpForDiagnosisRegressedeQTL'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = EXP.all.annotations)
 
@@ -610,7 +619,7 @@ syn_temp$setAnnotations(ENRICH_OBJ, annotations = Var.all.annotations)
 ```
 
 ```{bash Clean, echo=T, results='hide'}
-rm -r ~/TWAS/bin/
+#rm -r ~/TWAS/bin/
 rm *.bed
 rm *.fam
 rm *.bim
