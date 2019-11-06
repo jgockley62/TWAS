@@ -143,7 +143,7 @@ def process( foo ):
 		FINAL_OUT = ''.join([ str(OUT_DIR), '/ALL/', str(GNAME) ])
 		
 		#Run the Modified Weights Calculations
-		CMD = ''.join([ 'Rscript FUSION.compute_weights_Parallel.R --bfile ', str(OUT), '.filt --tmp ', str(OUT), ' --out ', str(FINAL_OUT), ' --verbose 0 --save_hsq --noclean --hsq_p 0.01 --PATH_plink ', str(PLIN), ' --PATH_gcta ', str(GCTA), ' --PATH_gemma ', str(GEMMA), ' --models blup,bslmm,lasso,top1,enet' ])
+		CMD = ''.join([ 'Rscript FUSION.compute_weights_Parallel_V2.R --bfile ', str(OUT), '.filt --scale ', str(1),' --tmp ', str(OUT), ' --out ', str(FINAL_OUT), ' --verbose 0 --save_hsq --noclean --hsq_p 0.01 --PATH_plink ', str(PLIN), ' --PATH_gcta ', str(GCTA), ' --PATH_gemma ', str(GEMMA), ' --models blup,bslmm,lasso,top1,enet' ])
 		print CMD
 		subprocess.Popen(CMD, shell=True).wait()
 
@@ -156,7 +156,7 @@ def process( foo ):
 		return( '\t'.join([ str(GNAME), str(CHR), str(P0), str(P1),  str( (dt_ended - dt_started).total_seconds() ) ]) )
 
 #Change to fit the number of cores you have available
-cores = 6
+cores = 14
 pool = mp.Pool(cores)
 jobs = []
 

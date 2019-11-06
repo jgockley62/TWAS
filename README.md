@@ -73,7 +73,7 @@ synapse get syn20857312
 
 git clone https://github.com/jgockley62/TWAS.git
 cp TWAS/code/WorksMultiThreaded.py .
-cp TWAS/code/FUSION.compute_weights_Parallel.R .
+cp TWAS/code/FUSION.compute_weights_Parallel_V2.R .
 
 awk '{ print $1"\t"$2 }' All_CEU_ToTrainForTWAS.fam > Total_IDs.txt
 
