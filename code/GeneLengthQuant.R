@@ -81,63 +81,7 @@ all.annotations = list(
   genomeAssemblyID = 'GRCh38.p12'
 )
 # Store Length and GC results
-write.table(Temp, file = 'GeneLengthsGCcontent.tsv', sep = '\t', quote=F)
+write.table(Temp, file = 'GeneLengthsGCcontent.tsv', sep = '\t', quote=F, row.names = F)
 ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='GeneLengthsGCcontent.tsv', name = 'Gene Lengths and GC content hg38.p12', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
 all.annotations$dataSubType = 'ReferenceData'
 syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
-
-
-
-
-###########
-temp <- myGetGeneLengthAndGCContent( ENSGs )
-Temp <- as.data.frame( cbind( paste0(temp$ensembl_gene_id, '.', temp$version), temp[,1:5]))
-colnames(Temp) <- c("Gene.ID", "ensembl_gene_id", "position", "hgnc_symbol", "percentage_gc_content", "gene.length")
-
-table( biomart$ensembl_gene_id %in% Temp$ensembl_gene_id)
-table( countz$feature %in% Temp$Gene.ID)
-
-##################
-org = 'hsa'
-id.type = 'ensembl_gene_id'
-host = 'jul2019.archive.ensembl.org'
-ensembl <- useMart("ENSEMBL_MART_ENSEMBL", host = host)
-NewVersion <- getBM( attributes = c(id.type, 'ensembl_gene_id', 'ensembl_gene_id_version', 'hgnc_symbol'), values = id, mart = ensembl)
-
-table(as.character(countz$feature)[ 5:dim(countz)[1] ] %in% NewVersion$ensembl_gene_id_version)
-
-Ver_ENSGs <- countz$feature[ as.character(countz$feature) %in% c("N_unmapped", "N_multimapping", "N_noFeature", "N_ambiguous" ) == F ]
-ENSGs <- do.call( rbind, strsplit( as.character(countz$feature), "[.]"))[,1][ do.call( rbind, strsplit( as.character(countz$feature), "[.]"))[,1] %in% c("N_unmapped", "N_multimapping", "N_noFeature", "N_ambiguous" ) == F ]
-Pos <- do.call( rbind, strsplit( as.character(countz$feature), "[.]"))[,2][ do.call( rbind, strsplit( as.character(countz$feature), "[.]"))[,2] %in% c("N_unmapped", "N_multimapping", "N_noFeature", "N_ambiguous" ) == F ]
-
-temp <- myGetGeneLengthAndGCContent( ENSGs )
-
-
-
-
-Tab <- as.data.frame( matrix( NA, length(ENSGs), 6) )
-colnames(Tab) <- c( "Gene.ID", "ensembl_gene_id", "position", "hgnc_symbol", "percentage_gc_content", "gene.length" )
-Tab$Gene.ID <- Ver_ENSGs
-Tab$ensembl_gene_id <- ENSGs
-Tab$position <- Pos
-
-tab <- as.data.frame( matrix( NA, 0, 6) )
-colnames(tab) <- c( "Gene.ID", "ensembl_gene_id", "position", "hgnc_symbol", "percentage_gc_content", "gene.length" )
-
-
-temp <- myGetGeneLengthAndGCContent( Tab$ensembl_gene_id )
-row.names(temp) <- temp$ensembl_gene_id
-
-Temp <- temp[ !duplicated(temp$ensembl_gene_id), ]
-row.names(Temp) <- Temp$ensembl_gene_id
-
-
-row.names( biomart ) <- as.character( biomart$ensembl_gene_id )
-biomart$hgnc_symbol <- as.character(biomart$hgnc_symbol)
-biomart$percentage_gc_content <- as.numeric(as.character(biomart$percentage_gc_content))
-biomart$gene.length <- as.numeric(as.character(biomart$gene.length))
-
-BIO <- biomart[ row.names(Temp), ]
-
-
-
