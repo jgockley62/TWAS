@@ -23,8 +23,8 @@ RUN apt-get update\
 && unzip plink_linux_x86_64_20190617.zip\
 && mv plink TWAS/bin \
 && rm toy.* \
-&& wget http://s3.amazonaws.com/plink2-assets/plink2_linux_x86_64_20191002.zip\
-&& unzip plink2_linux_x86_64_20191002.zip\
+&& wget http://s3.amazonaws.com/plink2-assets/plink2_linux_x86_64_20191015.zip\
+&& unzip plink2_linux_x86_64_20191015.zip\
 && mv plink2 TWAS/bin \
 && R -e "install.packages('BiocManager')"\
 && R -e "BiocManager::install('biomaRt')"\
@@ -55,3 +55,5 @@ RUN apt-get update\
 && R -e "BiocManager::install('edgeR')"\
 && R -e "BiocManager::install('ComplexHeatmap')"
 
+
+RUN R -e "devtools::install_github('gabraham/plink2R/plink2R', dependencies=TRUE)"

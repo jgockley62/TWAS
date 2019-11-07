@@ -173,7 +173,7 @@ METADATA$RINcontinuous2 = METADATA$RINcontinuous^2
 indToRetain = intersect(METADATA$Sampleid, colnames(COUNT))
 removedIDs = setdiff(colnames(COUNT), METADATA$Sampleid)
 COUNT = COUNT[,indToRetain]
-#Remove duplicated row for sampleid:150_120419
+#Remove duplicated row for sampleid:
 METADATA <- METADATA[!duplicated(METADATA),]
 rownames(METADATA) = METADATA$Sampleid
 METADATA = METADATA[indToRetain,]
