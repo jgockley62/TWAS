@@ -9,18 +9,16 @@ Date of analysis update: "`r date()`"
 
 syn3382527.7
 syn4300313.1
-syn8449369.2
+----Old Lengths syn8449369.2
+syn21156161
 syn7116000.1
-#_#OLDCOUNTS syn8691134.1
+----OLDCOUNTS syn8691134.1
 syn21075911
-
-#SynID Translator
+----SynID Translator
 syn21075913
-
 syn3191087.3
-#_#OLDMetrics syn8698240.2 Version 2
+----OLDMetrics syn8698240.2 Version 2
 syn21075912 
-#^^^ Version 1
 
 ### Load Libraries
 ```{r libs, echo=FALSE, warning=FALSE, message=FALSE, include=FALSE}
@@ -131,9 +129,9 @@ METADATA <- METADATA %>%
 colnames(METADATA) = gsub('AlignmentSummaryMetrics__','',colnames(METADATA))
 colnames(METADATA) = gsub('RnaSeqMetrics__','',colnames(METADATA))
 
-GENE.PARAM = syn_temp$get('syn8449369', version = 2)$path %>%
+GENE.PARAM = syn_temp$get('syn21156161', version = 2)$path %>%
   data.table::fread(data.table = FALSE)
-ALL_USED_IDs = c(ALL_USED_IDs, 'syn8449369')
+ALL_USED_IDs = c(ALL_USED_IDs, 'syn21156161')
 GENE.LEN = dplyr::select(GENE.PARAM, ensembl_gene_id, gene.length) %>% 
   unique() 
 rownames(GENE.LEN) = GENE.LEN$ensembl_gene_id
@@ -251,7 +249,7 @@ PROCESSED_COUNTS = getGeneFilteredGeneExprMatrix(COUNT[genesToAnalyze, ],
                                                  MIN_SAMPLE_PERCENT_WITH_MIN_GENE_CPM=0)
 # Check gene biotype
 ## Define biomart object
-mart <- useMart(biomart = "ENSEMBL_MART_ENSEMBL", host = "dec2016.archive.ensembl.org", dataset = "hsapiens_gene_ensembl")
+mart <- useMart(biomart = "ENSEMBL_MART_ENSEMBL", host = "sep2019.archive.ensembl.org", dataset = "hsapiens_gene_ensembl")
 ## Query biomart
 Ensemble2HGNC <- getBM(attributes = c("ensembl_gene_id", "hgnc_symbol", "gene_biotype"),
                        filters = "ensembl_gene_id", 
@@ -619,7 +617,7 @@ activityDescription = 'Covariate analysis and Regrsison of AD Diagnosis of align
 
 CODE <- syn_temp$store(synapseclient$Folder(name = "ROSMAP", parentId = parentId))
 
-Syns_Used <- c("syn3382527", "syn4300313", "syn8449369", "syn7116000",
+Syns_Used <- c("syn3382527", "syn4300313", "syn21156161", "syn7116000",
   "syn21075911", "syn3191087", "syn21075913", "syn21075912"
 )
 # Set annotations
