@@ -9,11 +9,11 @@ syn_temp$login()
 COUNT_OBJ <- syn_temp$get("syn21075911", version = 1)
 countz <- read.table(COUNT_OBJ$path, header=T, sep='\t', check.names = F)
 
-myGetGeneLengthAndGCContent <- function(id){
+myGetGeneLengthAndGCContent <- function(id, ver){
   
   org = 'hsa'
   id.type = 'ensembl_gene_id'
-  host = 'sep2019.archive.ensembl.org'
+  host = ver
   
   message("Connecting to BioMart ...")
   ensembl <- useMart("ENSEMBL_MART_ENSEMBL", host = host)
@@ -53,9 +53,15 @@ myGetGeneLengthAndGCContent <- function(id){
 
 ENSGs <- do.call(rbind, strsplit(as.character(countz$feature)[5:dim(countz)[1]], "[.]"))
 
-temp <- myGetGeneLengthAndGCContent( ENSGs )
+temp_Jul <- myGetGeneLengthAndGCContent( ENSGs, 'jul2019.archive.ensembl.org' )
+temp_Sep <- myGetGeneLengthAndGCContent( ENSGs, 'sep2019.archive.ensembl.org' )
+
+#temp <- myGetGeneLengthAndGCContent( ENSGs )
+temp <- rbind( temp_Sep[1:dim(temp_Sep)[1],], temp_Jul[ (temp_Jul$ensembl_gene_id %in% temp_Sep$ensembl_gene_id) ==F,]  )
+
 Temp <- as.data.frame( cbind( paste0(temp$ensembl_gene_id, '.', temp$version), temp[,1:5]))
 colnames(Temp) <- c("Gene.ID", "ensembl_gene_id", "position", "hgnc_symbol", "percentage_gc_content", "gene.length")
+
 
 parentId = 'syn21136908';
 activityName = 'Gene Lengths and GC content hg38.p12';

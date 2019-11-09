@@ -15,13 +15,13 @@ Date of analysis update: "`r date()`"
 | Oldcounts------syn8690904.1 | | 
 | syn6126119.3 | | 
 | syn8698214.1 | | 
-| syn8449369.2 | | 
+| OldGeneModel------syn8449369.2 | | 
 | syn6126114.3 | | 
 | syn6145639.5 | | 
 | OldCounts------syn8690799.1 | | 
 |syn20830935.1 | |
 |syn20825567.1 | |
-
+|syn21156161.2 | |
 
 
 ```{r libs, echo=FALSE, warning=FALSE, message=FALSE, include=FALSE, cache=FALSE}
@@ -138,9 +138,9 @@ METADATA = list(METADATA_TC, METADATA_CE) %>%
 colnames(METADATA) = gsub('AlignmentSummaryMetrics__','',colnames(METADATA))
 colnames(METADATA) = gsub('RnaSeqMetrics__','',colnames(METADATA))
 # Get gene specific parameters from synapse
-GENE.PARAM = syn_temp$get('syn8449369', version = 2)$path %>% 
+GENE.PARAM = syn_temp$get('syn21156161', version = 3)$path %>% 
   read.table(sep = '\t', header = T, stringsAsFactors = F)
-ALL_USED_IDs = c(ALL_USED_IDs, 'syn8449369')
+ALL_USED_IDs = c(ALL_USED_IDs, 'syn21156161')
 GENE.LEN = dplyr::select(GENE.PARAM, ensembl_gene_id, gene.length) %>% unique()
 rownames(GENE.LEN) = GENE.LEN$ensembl_gene_id
 GENE.GC = dplyr::select(GENE.PARAM, ensembl_gene_id, percentage_gc_content) %>% unique()
@@ -280,6 +280,7 @@ FactorCovariates <- c("Donor_ID", "Source", "Sex", "FLOWCELL", "Tissue.SourceDia
 ContCovariates <- c("RIN", "RIN2", "AgeAtDeath","PMI", "PCT_PF_READS_ALIGNED", "PCT_CODING_BASES",
                     "PCT_INTERGENIC_BASES", "PCT_INTRONIC_BASES", "PCT_RIBOSOMAL_BASES")
 # Find inter relation between factor covariates
+METADATA <- METADATA[ !duplicated(METADATA), ]
 COVARIATES = METADATA[,c(FactorCovariates,ContCovariates),drop=F]
 rownames(COVARIATES) <- METADATA$ID
 # Convert factor covariates to factors
@@ -741,7 +742,7 @@ RESIDUAL.SVA.GENE_EXPRESSION = RESIDUAL.SVA.GENE_EXPRESSION +
 ```{r synapse.parameters, include=FALSE, cache=TRUE}
 parentId = 'syn21136908';
 activityName = 'Covariate and Diagnosis Regression';
-activityDescription = 'Covariate analysis and Regrsison of AD Diagnosis of aligned effective counts with GRCh37 with CQN normalisation (DLPFC)';
+activityDescription = 'Covariate analysis and Regrsison of AD Diagnosis of aligned effective counts with GRCh38 with CQN normalisation (DLPFC)';
 thisFileName <- 'Mayo_RegressDiagnosis_4_TWAS_hg38.Rmd'
 # Github link
 thisRepo <- githubr::getRepo(repository = "jgockley62/TWAS", ref="branch", refName='master')
@@ -751,7 +752,7 @@ thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('c
 ### Store files in synapse
 ```{r synapse.store, include=FALSE, eval=TRUE, cache=FALSE}
 activityName = 'Covariate and Diagnosis Regression';
-activityDescription = 'Covariate analysis and Regrsison of AD Diagnosis of aligned effective counts with GRCh37 with CQN normalisation (CBE, TCX)';
+activityDescription = 'Covariate analysis and Regrsison of AD Diagnosis of aligned effective counts with GRCh38 with CQN normalisation (CBE, TCX)';
 
 CODE <- syn_temp$store(synapseclient$Folder(name = "Mayo", parentId = parentId))
 
@@ -773,7 +774,7 @@ all.annotations = list(
   normalizationStatus	= TRUE,
   normalizationType	= 'CQN',
   rnaquantification = 'RSEM',
-  genomeAssemblyID = 'GRCh37'
+  genomeAssemblyID = 'GRCh38'
 )
 
 # Store SVA results

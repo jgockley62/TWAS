@@ -3,3 +3,6 @@ plink_linux_x86_64_20190617.zip
 LICENSE
 plink/*
 bin/
+code/cache/
+code/core*
+code/MSBB_RegressDiagnosis_4_TWAS_hg38_cache/
