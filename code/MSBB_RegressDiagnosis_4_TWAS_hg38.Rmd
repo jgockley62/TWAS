@@ -29,6 +29,7 @@ library(tidyverse)
 library(psych)
 library(limma)
 library(edgeR)
+#BiocManager::install("biomaRt")
 library(biomaRt)
 library(RColorBrewer)
 library(cqn)
@@ -414,7 +415,11 @@ residualSigCovars = preAdjustedSigCovars
 covariatesEffects = preAdjustedSigCovars$Effects.significantCovars[residualCovars]
 postAdjustCovars = c(postAdjustCovars, names(which.max(covariatesEffects))) %>% unique()
 loopCount = 0 
-while(length(residualSigCovars$significantCovars)!=0 && loopCount <= 20){
+
+notEstimable <- NULL
+Start <- Sys.time()
+foo <- 0
+while(length(residualSigCovars$significantCovars)!=0 && loopCount <= 8){ #_# <= 20
   writeLines(paste('Using following covariates in the model:',
                    paste(postAdjustCovars, collapse=', '),
                    'as fixed effects and individualIdentifier as random effect'))
@@ -453,8 +458,15 @@ while(length(residualSigCovars$significantCovars)!=0 && loopCount <= 20){
     RESIDUAL.GENE_EXPRESSION = residuals.MArrayLM(VOOM.ADJUSTED.FIT,
                                                   CQN.GENE_EXPRESSION$E)
   } else {
-    notEstimable = c(notEstimable, postAdjustCovars[length(postAdjustCovars)])
-    postAdjustCovars = postAdjustCovars[1:(length(postAdjustCovars)-1)]
+    #_#TryThis Out
+    #if( isTRUE(exists("notEstimable")) ){
+      message( paste0( "LoopCount: ", loopCount," is NaN"))
+      notEstimable = c(notEstimable, postAdjustCovars[length(postAdjustCovars)])
+      postAdjustCovars = postAdjustCovars[1:(length(postAdjustCovars)-1)]
+    #}else{
+      #notEstimable = postAdjustCovars[length(postAdjustCovars)]
+      #postAdjustCovars = postAdjustCovars[1:(length(postAdjustCovars)-1)]
+      #}
   }
   
   # Residual covariates to choose from
@@ -474,6 +486,16 @@ while(length(residualSigCovars$significantCovars)!=0 && loopCount <= 20){
   postAdjustCovars = c(postAdjustCovars, names(which.max(covariatesEffects)))
   loopCount = loopCount + 1
   # print(loopCount)
+  message( paste0( loopCount, " Time: ", Sys.time()-Start ))
+  message( paste0( "Residual Significant Covars: ", c(residualSigCovars$significantCovars )) )
+  if( residualSigCovars$significantCovars == 'PCT_RIBOSOMAL_BASES' & isTRUE(length(residualSigCovars$significantCovars) == 1)){
+    foo <- foo + 1 
+  }
+  if( foo > 2){
+    loopCount <- 22
+  }else{
+    
+  }
 }
 modelStr <- paste(paste(gsub('_','\\\\_',postAdjustCovars), collapse=', '),
                   'as fixed effects')
@@ -728,7 +750,7 @@ system('rm *.tsv')
 
 ```{r knitmd, eval=FALSE, cache=FALSE, include=FALSE}
 synapseclient <- reticulate::import("synapseclient")
-syn_temp <- synapseclient$Synapse()
+syn_temp  <- synapseclient$Synapse()
 syn_temp$login()
 
 setwd("~/TWAS/code/")

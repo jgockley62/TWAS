@@ -1,5 +1,5 @@
 ---
-title: Covariate and analysis of MSBB reprocessed counts Regressing out Diagnosis as well for TWAS
+title: Covariate and analysis of MSBB reprocessed counts
 author: 'JKG - Adapted from: Thanneer Perumal'
 output: html_notebook
 editor_options:
@@ -7,13 +7,17 @@ editor_options:
 ---
   Date of analysis update: "`r date()`"
   
-  
-syn8691099.1
-syn10156693.3
-syn8698270.1
-syn8449369.2
-syn6100548.7
-syn6101474.4
+| *Synapse ID* | *File Name* |
+|  -----------------------------------------  |   ---------                      |
+| Old Count Matrix ------syn8691099.1 | |
+| syn20963389 | |
+| syn20963390 | |
+| syn10156693.3 | | 
+| syn8698270.1 | | 
+| Old Length GC Data-----syn8449369.2 | | 
+| syn21156161 | |
+| syn6100548.7 | | 
+| syn6101474.4 | | 
 
 ```{r libs, echo=FALSE, warning=FALSE, message=FALSE, include=FALSE, cache=FALSE}
 ##It is assumed your working directory is "~/ampad-DiffExp/gene_level_analysis"
@@ -25,6 +29,7 @@ library(tidyverse)
 library(psych)
 library(limma)
 library(edgeR)
+#BiocManager::install("biomaRt")
 library(biomaRt)
 library(RColorBrewer)
 library(cqn)
@@ -53,10 +58,22 @@ knitr::opts_chunk$set(
 Obtain count matrix and metadata from synapse
 ```{r download.data}
 # Get reprocessed sample counts for temporal cortex
-COUNT_ID <- 'syn8691099';
+COUNT_ID <- 'syn20963390';
 ALL_USED_IDs <- COUNT_ID
 COUNT <- syn_temp$get(COUNT_ID, version = 1)$path %>%
   read.table(header=T, sep='\t', check.names = F, row.names = 1)
+
+Provenance <- 'syn20963389'
+Prov <- syn_temp$get(Provenance, version = 1)
+ALL_USED_IDs[length(ALL_USED_IDs)+1] = Provenance
+Translator <- read.csv(Prov$path, header=T, row.names = 1)
+colnames(COUNT) <- as.character( Translator[ colnames(COUNT), ][,2] )
+
+COUNT <- COUNT[ row.names(COUNT)[ (row.names(COUNT) %in% c('N_unmapped', 'N_multimapping', 'N_noFeature', 'N_ambiguous'))==F] , ]
+
+#Need to filter low counts here to remove the PAR_Y Regions
+COUNT <- COUNT[ rowSums(COUNT[,] > 0) / (ncol(COUNT)) >= 0.05, ]
+
 # Convert rownames of counts from tracking id to ensemble gene id
 tmp = data.frame(Gene.ID = rownames(COUNT)) %>%
   dplyr::mutate(ID = Gene.ID) %>%
@@ -104,9 +121,9 @@ METADATA <- dplyr::full_join(METADATA_TECH, METADATA_CLINICAL) %>%
 colnames(METADATA) = gsub('AlignmentSummaryMetrics__','',colnames(METADATA))
 colnames(METADATA) = gsub('RnaSeqMetrics__','',colnames(METADATA))
 # Get gene specific parameters from synapse
-GENE.PARAM = syn_temp$get('syn8449369', version = 2)$path %>% 
+GENE.PARAM = syn_temp$get('syn21156161', version = 3)$path %>% 
     read.table(sep='\t', header=T, stringsAsFactors=F)
-ALL_USED_IDs = c(ALL_USED_IDs, 'syn8449369')
+ALL_USED_IDs = c(ALL_USED_IDs, 'syn21156161')
 GENE.LEN = dplyr::select(GENE.PARAM, ensembl_gene_id, gene.length) %>% unique()
 rownames(GENE.LEN) = GENE.LEN$ensembl_gene_id
 GENE.GC = dplyr::select(GENE.PARAM, ensembl_gene_id, percentage_gc_content) %>% unique()
@@ -172,7 +189,7 @@ Determine relationship between covariates
 ```{r covariates.clustering}
 primaryVariable <- c("CDR", "Tissue.Diagnosis", "Tissue.APOE4")
 #_# ADD DIAGNOSIS HERE TO REGRESS FOR TWAS
-FactorCovariates <- c("individualIdentifier", "batch", "RACE", "Sex", "Tissue.Diagnosis", "Tissue.APOE4", "Diagnosis")
+FactorCovariates <- c("individualIdentifier", "batch", "RACE", "Sex", "Tissue.Diagnosis", "Tissue.APOE4")
 ContCovariates <- c("CDR", "RIN", "RIN2", "AOD","PMI",  "PCT_PF_READS_ALIGNED", "PCT_CODING_BASES",
                     "PCT_INTERGENIC_BASES", "PCT_INTRONIC_BASES", "PCT_RIBOSOMAL_BASES")
 METADATA$Diagnosis <- as.factor(METADATA$Diagnosis)
@@ -236,7 +253,9 @@ PROCESSED_COUNTS = getGeneFilteredGeneExprMatrix(COUNT[genesToAnalyze, ],
                                                  MIN_SAMPLE_PERCENT_WITH_MIN_GENE_CPM=0)
 # Check gene biotype
 ## Define biomart object
-mart <- useMart(biomart = "ENSEMBL_MART_ENSEMBL", host = "dec2016.archive.ensembl.org", dataset = "hsapiens_gene_ensembl")
+mart <- useMart(biomart = "ENSEMBL_MART_ENSEMBL", host = "jul2019.archive.ensembl.org", dataset = "hsapiens_gene_ensembl")
+#mart <- useMart(biomart = "ENSEMBL_MART_ENSEMBL", dataset = "hsapiens_gene_ensembl")
+
 ## Query biomart
 Ensemble2HGNC <- getBM(attributes = c("ensembl_gene_id", "hgnc_symbol", "gene_biotype"),
                        filters = "ensembl_gene_id", 
@@ -358,8 +377,6 @@ WGCNA::plotDendroAndColors(tree,
                            abHeight = 0.80, 
                            main = "Sample dendrogram",
                            groupLabels = colnames(COVARIATES.tmp))
-#HG19_Exp <- CQN.GENE_EXPRESSION$E.no.na
-#saveRDS(HG19_Exp, file = "HG19_Exp.RDS")
 ```
 Coexpression of genes 
 ```{r coexp1, cache=FALSE, fig.height=5, fig.width=5}
@@ -400,7 +417,11 @@ residualSigCovars = preAdjustedSigCovars
 covariatesEffects = preAdjustedSigCovars$Effects.significantCovars[residualCovars]
 postAdjustCovars = c(postAdjustCovars, names(which.max(covariatesEffects))) %>% unique()
 loopCount = 0 
-while(length(residualSigCovars$significantCovars)!=0 && loopCount <= 20){
+
+notEstimable <- NULL
+Start <- Sys.time()
+foo <- 0
+while(length(residualSigCovars$significantCovars)!=0 && loopCount <= 8){ #_# <= 20
   writeLines(paste('Using following covariates in the model:',
                    paste(postAdjustCovars, collapse=', '),
                    'as fixed effects and individualIdentifier as random effect'))
@@ -439,8 +460,15 @@ while(length(residualSigCovars$significantCovars)!=0 && loopCount <= 20){
     RESIDUAL.GENE_EXPRESSION = residuals.MArrayLM(VOOM.ADJUSTED.FIT,
                                                   CQN.GENE_EXPRESSION$E)
   } else {
-    notEstimable = c(notEstimable, postAdjustCovars[length(postAdjustCovars)])
-    postAdjustCovars = postAdjustCovars[1:(length(postAdjustCovars)-1)]
+    #_#TryThis Out
+    #if( isTRUE(exists("notEstimable")) ){
+      message( paste0( "LoopCount: ", loopCount," is NaN"))
+      notEstimable = c(notEstimable, postAdjustCovars[length(postAdjustCovars)])
+      postAdjustCovars = postAdjustCovars[1:(length(postAdjustCovars)-1)]
+    #}else{
+      #notEstimable = postAdjustCovars[length(postAdjustCovars)]
+      #postAdjustCovars = postAdjustCovars[1:(length(postAdjustCovars)-1)]
+      #}
   }
   
   # Residual covariates to choose from
@@ -460,6 +488,9 @@ while(length(residualSigCovars$significantCovars)!=0 && loopCount <= 20){
   postAdjustCovars = c(postAdjustCovars, names(which.max(covariatesEffects)))
   loopCount = loopCount + 1
   # print(loopCount)
+  message( paste0( loopCount, " Time: ", Sys.time()-Start ))
+  message( paste0( "Residual Significant Covars: ", c(residualSigCovars$significantCovars )) )
+  
 }
 modelStr <- paste(paste(gsub('_','\\\\_',postAdjustCovars), collapse=', '),
                   'as fixed effects')
@@ -598,10 +629,10 @@ RESIDUAL.SVA.GENE_EXPRESSION = RESIDUAL.SVA.GENE_EXPRESSION +
 ```
 
 ```{r synapse.parameters, include=FALSE, cache=TRUE}
-parentId = 'syn20798011';
-activityName = 'Covariate and Diagnosis Regression';
-activityDescription = 'Covariate analysis and Regrsison of AD Diagnosis of aligned effective counts with GRCh37 with CQN normalisation (IFG, STG, FP, PHG)';
-thisFileName <- 'MSBB_RegressDiagnosis_4_TWAS.Rmd'
+parentId = 'syn21277617';
+activityName = 'Covariate Regression';
+activityDescription = 'Covariate analysis and Regrsison of AD of aligned effective counts with GRCh38 with CQN normalisation (IFG, STG, FP, PHG)';
+thisFileName <- 'MSBB_Regress_hg38.Rmd'
 # Github link
 thisRepo <- githubr::getRepo(repository = "jgockley62/TWAS", ref="branch", refName='master')
 thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thisFileName))
@@ -610,13 +641,13 @@ thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('c
 ### Store files in synapse
 ```{r synapse.store, include=FALSE, eval=TRUE, cache=FALSE}
 activityName = 'Covariate and Diagnosis Regression';
-activityDescription = 'Covariate analysis and Regrsison of AD Diagnosis of aligned effective counts with GRCh37 with CQN normalisation (IFG, STG, FP, PHG)';
+activityDescription = 'Covariate analysis and Regression of aligned effective counts with GRCh38 with CQN normalisation (IFG, STG, FP, PHG)';
 
 CODE <- syn_temp$store(synapseclient$Folder(name = "MSBB", parentId = parentId))
 
 #Set Used SynIDs For Provenance
-Syns_Used <- c("syn8691099", "syn10156693", "syn8698270", 
-               "syn8449369", "syn6100548", "syn6101474"
+Syns_Used <- c("syn20963390", "syn10156693", "syn8698270", 
+               "syn21156161", "syn6100548", "syn6101474", "syn20963389"
 )
 # Set annotations
 all.annotations = list(
@@ -631,75 +662,75 @@ all.annotations = list(
   normalizationStatus	= TRUE,
   normalizationType	= 'CQN',
   rnaquantification = 'RSEM',
-  genomeAssemblyID = 'GRCh37'
+  genomeAssemblyID = 'GRCh38'
 )
 
 # Store SVA results
-write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'MSBB_SVA_Diagnosis_Corrected.tsv', sep = '\t', quote=F)
-ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='MSBB_SVA_Diagnosis_Corrected.tsv', name = 'Normalised, covariates, surrogate and Diagnosis variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'MSBB_SVA_Corrected.tsv', sep = '\t', quote=F)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='MSBB_SVA_Corrected.tsv', name = 'Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
   all.annotations$dataSubType = 'residualGeneExpForeQTL'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
 # Store covariates
 COVARIATES = rownameToFirstColumn(COVARIATES, 'SampleID')
-write.table(COVARIATES, file = 'MSBB_SVA_Diagnosis_Covariates.tsv', row.names = F, sep = '\t', quote=F)
-ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='MSBB_SVA_Diagnosis_Covariates.tsv', name = 'Covariates', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+write.table(COVARIATES, file = 'MSBB_SVA_Covariates.tsv', row.names = F, sep = '\t', quote=F)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='MSBB_SVA_Covariates.tsv', name = 'Covariates', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
   all.annotations$dataSubType = 'covariates'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
  
 # Store filtered counts
 PROCESSED_COUNTS$filteredExprMatrix$counts %>%
   rownameToFirstColumn('ensembl_gene_id') %>%
-  write.table(file = 'MSBB_Diagnosis_Regressed_Counts.tsv', sep = '\t', row.names=F, quote=F)
-ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='MSBB_Diagnosis_Regressed_Counts.tsv', name = 'Counts (filtered raw)', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  write.table(file = 'MSBB_Regressed_Counts.tsv', sep = '\t', row.names=F, quote=F)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='MSBB_Regressed_Counts.tsv', name = 'Counts (filtered raw)', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
   all.annotations$dataSubType = 'filteredCounts'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
 # Store Estimated counts
 NEW.COUNTS %>%
   rownameToFirstColumn('ensembl_gene_id') %>%
-  write.table(file = 'MSBB_Diagnosis_Regressed_eCounts.tsv', sep = '\t', row.names=F, quote=F)
-ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='MSBB_Diagnosis_Regressed_eCounts.tsv', name = 'Counts (estimated)', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  write.table(file = 'MSBB_Regressed_eCounts.tsv', sep = '\t', row.names=F, quote=F)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='MSBB_Regressed_eCounts.tsv', name = 'Counts (estimated)', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
   all.annotations$dataSubType = 'estimatedCounts'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
 # Store logCPM
 CQN.GENE_EXPRESSION$y %>%
   rownameToFirstColumn('ensembl_gene_id') %>%
-  write.table(file = 'MSBB_Diagnosis_Regressed_logCPM.tsv', sep = '\t', row.names=F, quote=F)
-ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='MSBB_Diagnosis_Regressed_logCPM.tsv', name = 'Counts (filtered logCPM)', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  write.table(file = 'MSBB_Regressed_logCPM.tsv', sep = '\t', row.names=F, quote=F)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='MSBB_Regressed_logCPM.tsv', name = 'Counts (filtered logCPM)', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
   all.annotations$dataSubType = 'filteredLCPM'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
 # Store cqn offsets
 CQN.GENE_EXPRESSION$offset %>%
   rownameToFirstColumn('ensembl_gene_id') %>%
-  write.table(file = 'MSBB_Diagnosis_Regressed_offset.tsv', sep = '\t', row.names=F, quote=F)
-ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='MSBB_Diagnosis_Regressed_offset.tsv', name = 'Gene length and GC content offset', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  write.table(file = 'MSBB_Regressed_offset.tsv', sep = '\t', row.names=F, quote=F)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='MSBB_Regressed_offset.tsv', name = 'Gene length and GC content offset', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
   all.annotations$dataSubType = 'offset'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
 # Store design matrix
 MODEL1 %>%
   rownameToFirstColumn('SampleID') %>%
-  write.table(file = 'MSBB_Diagnosis_Regressed_Design.tsv', sep = '\t', row.names=F, quote=F)
-ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='MSBB_Diagnosis_Regressed_Design.tsv', name = 'Design Matrix', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  write.table(file = 'MSBB_Regressed_Design.tsv', sep = '\t', row.names=F, quote=F)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='MSBB_Regressed_Design.tsv', name = 'Design Matrix', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
   all.annotations$dataSubType = 'designMatrix'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
 # Store surrogate variables
 SURR.VAR %>%
   rownameToFirstColumn('SampleID') %>%
-  write.table(file = 'MSBB_Diagnosis_Regressed_SurVar.tsv', sep = '\t', row.names=F, quote=F)
-ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='MSBB_Diagnosis_Regressed_SurVar.tsv', name = 'Surrogate Variables', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  write.table(file = 'MSBB_Regressed_SurVar.tsv', sep = '\t', row.names=F, quote=F)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='MSBB_Regressed_SurVar.tsv', name = 'Surrogate Variables', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
   all.annotations$dataSubType = 'surrogateVariables'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
   
 # Store residual gene expression for network analysis
 RESIDUAL.NET.GENE_EXPRESSION %>%
   rownameToFirstColumn('ensembl_gene_id') %>%
-  write.table(file = 'MSBB_Diagnosis_Regressed_netResidualExpression.tsv', sep = '\t', row.names=F, quote=F)
-ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='MSBB_Diagnosis_Regressed_netResidualExpression.tsv', name = 'Normalised, covariates and Diagnosis removed residual expression (for network analysis)', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  write.table(file = 'MSBB_Regressed_netResidualExpression.tsv', sep = '\t', row.names=F, quote=F)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='MSBB_Regressed_netResidualExpression.tsv', name = 'Normalised, covariates removed residual expression (for network analysis)', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
   all.annotations$dataSubType = 'residualGeneExpForNetAnlz'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
   
@@ -714,14 +745,14 @@ system('rm *.tsv')
 
 ```{r knitmd, eval=FALSE, cache=FALSE, include=FALSE}
 synapseclient <- reticulate::import("synapseclient")
-syn_temp <- synapseclient$Synapse()
+syn_temp  <- synapseclient$Synapse()
 syn_temp$login()
 
 setwd("~/TWAS/code/")
 source("~/TWAS/utilityFunctions/knitfile2synapseClient.R")
 source("~/TWAS/utilityFunctions/hook_synapseMdSyntax_plot.R")
 
-createAndKnitToFolderEntityClient(file = "MSBB_RegressDiagnosis_4_TWAS.Rmd",
-                                          parentId ="syn20798011",
+createAndKnitToFolderEntityClient(file = "MSBB_Regress_hg38.Rmd",
+                                          parentId ="syn21277617",
                                           folderName = 'MSBB')
 ```
