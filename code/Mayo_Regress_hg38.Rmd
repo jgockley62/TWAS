@@ -14,7 +14,8 @@ Date of analysis update: "`r date()`"
 | syn3817650.8 | | 
 | Oldcounts------syn8690904.1 | | 
 | syn6126119.3 | | 
-| syn8698214.1 | | 
+| syn20831294 ||
+| OldMetrics--------syn8698214.1 | | 
 | OldGeneModel------syn8449369.2 | | 
 | syn6126114.3 | | 
 | syn6145639.5 | | 
@@ -115,7 +116,7 @@ METADATA_CE <- syn_temp$get(METADATA_CE_ID, version = 5)$path %>%
   dplyr::mutate(ID = paste(Donor_ID, Tissue, sep = '_')) %>%
   dplyr::rename(Gender = Sex, FLOWCELL = Flowcell)
 # Get picard metrics from synapse
-METADATA_PICARD_CE_ID <- 'syn8698214';
+METADATA_PICARD_CE_ID <- 'syn20831294';
 ALL_USED_IDs[length(ALL_USED_IDs)+1] = METADATA_PICARD_CE_ID
 METADATA_PICARD_CE <- syn_temp$get(METADATA_PICARD_CE_ID, version = 1)$path %>%
   read.table(sep='\t', header=T, stringsAsFactors=F) %>% 
@@ -340,7 +341,7 @@ PROCESSED_COUNTS = getGeneFilteredGeneExprMatrix(COUNT[genesToAnalyze, ],
                                                  MIN_SAMPLE_PERCENT_WITH_MIN_GENE_CPM=0)
 # Check gene biotype
 ## Define biomart object
-mart <- useMart(biomart = "ENSEMBL_MART_ENSEMBL", host = "sep2019.archive.ensembl.org", dataset = "hsapiens_gene_ensembl")
+mart <- useMart(biomart = "ENSEMBL_MART_ENSEMBL", host = "jul2019.archive.ensembl.org", dataset = "hsapiens_gene_ensembl")
 ## Query biomart
 Ensemble2HGNC <- getBM(attributes = c("ensembl_gene_id", "hgnc_symbol", "gene_biotype"),
                        filters = "ensembl_gene_id", 
@@ -758,7 +759,7 @@ CODE <- syn_temp$store(synapseclient$Folder(name = "Mayo", parentId = parentId))
 
 #Set Used SynIDs For Provenance
 Syns_Used <- c("syn5223705", "syn8698211", "syn3817650", "syn20825567",
-"syn6126119", "syn8698214", "syn8449369", "syn6126114", "syn6145639", "syn20830935"
+"syn6126119", "syn20831294", "syn8449369", "syn6126114", "syn6145639", "syn20830935"
 )
 
 # Set annotations

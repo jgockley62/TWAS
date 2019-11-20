@@ -13,7 +13,8 @@ editor_options:
 | syn20963389 | |
 | syn20963390 | |
 | syn10156693.3 | | 
-| syn8698270.1 | | 
+| syn20963391 ||
+| Old Picard Metrics-----syn8698270.1 | | 
 | Old Length GC Data-----syn8449369.2 | | 
 | syn21156161 | |
 | syn6100548.7 | | 
@@ -109,7 +110,7 @@ ALL_USED_IDs[length(ALL_USED_IDs)+1] = METADATA_CLINICAL_ID
 METADATA_CLINICAL <- syn_temp$get(METADATA_CLINICAL_ID, version = 4)$path %>%
   read.csv(header = T)
 # Get picard metrics from synapse
-METADATA.PICARD_ID <- 'syn8698270';
+METADATA.PICARD_ID <- 'syn20963391';
 ALL_USED_IDs[length(ALL_USED_IDs)+1] = METADATA.PICARD_ID
 METADATA.PICARD <- syn_temp$get(METADATA.PICARD_ID, version = 1)$path %>%
   read.table(sep='\t', header=T, stringsAsFactors=F) %>% 
@@ -646,7 +647,7 @@ activityDescription = 'Covariate analysis and Regression of aligned effective co
 CODE <- syn_temp$store(synapseclient$Folder(name = "MSBB", parentId = parentId))
 
 #Set Used SynIDs For Provenance
-Syns_Used <- c("syn20963390", "syn10156693", "syn8698270", 
+Syns_Used <- c("syn20963390", "syn10156693", "syn20963391", 
                "syn21156161", "syn6100548", "syn6101474", "syn20963389"
 )
 # Set annotations

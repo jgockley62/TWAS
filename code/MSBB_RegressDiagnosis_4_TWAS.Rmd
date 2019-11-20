@@ -8,12 +8,12 @@ editor_options:
   Date of analysis update: "`r date()`"
   
   
-syn8691099.1
-syn10156693.3
-syn8698270.1
-syn8449369.2
-syn6100548.7
-syn6101474.4
+| syn8691099.1
+| syn10156693.3
+| syn8698270.1
+| syn8449369.2
+| syn6100548.7
+| syn6101474.4
 
 ```{r libs, echo=FALSE, warning=FALSE, message=FALSE, include=FALSE, cache=FALSE}
 ##It is assumed your working directory is "~/ampad-DiffExp/gene_level_analysis"
