@@ -115,6 +115,10 @@ ALL_USED_IDs[length(ALL_USED_IDs)+1] = METADATA.PICARD_ID
 METADATA.PICARD <- syn_temp$get(METADATA.PICARD_ID, version = 1)$path %>%
   read.table(sep='\t', header=T, stringsAsFactors=F) %>% 
   dplyr::rename(sampleIdentifier = sample)
+#REplace Syn IDs
+row.names(METADATA.PICARD) <- as.character( Translator[ METADATA.PICARD$sampleIdentifier , ][,2] )
+METADATA.PICARD$sampleIdentifier <- row.names(METADATA.PICARD)
+
 METADATA <- dplyr::full_join(METADATA_TECH, METADATA_CLINICAL) %>%
   dplyr::inner_join(METADATA.PICARD) %>%
   dplyr::select(-AOD) %>%
@@ -254,7 +258,7 @@ PROCESSED_COUNTS = getGeneFilteredGeneExprMatrix(COUNT[genesToAnalyze, ],
                                                  MIN_SAMPLE_PERCENT_WITH_MIN_GENE_CPM=0)
 # Check gene biotype
 ## Define biomart object
-mart <- useMart(biomart = "ENSEMBL_MART_ENSEMBL", host = "sep2019.archive.ensembl.org", dataset = "hsapiens_gene_ensembl")
+mart <- useMart(biomart = "ENSEMBL_MART_ENSEMBL", host = "jul2019.archive.ensembl.org", dataset = "hsapiens_gene_ensembl")
 ## Query biomart
 Ensemble2HGNC <- getBM(attributes = c("ensembl_gene_id", "hgnc_symbol", "gene_biotype"),
                        filters = "ensembl_gene_id", 
@@ -420,7 +424,7 @@ loopCount = 0
 notEstimable <- NULL
 Start <- Sys.time()
 foo <- 0
-while(length(residualSigCovars$significantCovars)!=0 && loopCount <= 8){ #_# <= 20
+while(length(residualSigCovars$significantCovars)!=0 && loopCount <= 20){ #_# <= 8
   writeLines(paste('Using following covariates in the model:',
                    paste(postAdjustCovars, collapse=', '),
                    'as fixed effects and individualIdentifier as random effect'))
@@ -489,14 +493,14 @@ while(length(residualSigCovars$significantCovars)!=0 && loopCount <= 8){ #_# <= 
   # print(loopCount)
   message( paste0( loopCount, " Time: ", Sys.time()-Start ))
   message( paste0( "Residual Significant Covars: ", c(residualSigCovars$significantCovars )) )
-  if( residualSigCovars$significantCovars == 'PCT_RIBOSOMAL_BASES' & isTRUE(length(residualSigCovars$significantCovars) == 1)){
-    foo <- foo + 1 
-  }
-  if( foo > 2){
-    loopCount <- 22
-  }else{
+  #if( residualSigCovars$significantCovars == 'PCT_RIBOSOMAL_BASES' & isTRUE(length(residualSigCovars$significantCovars) == 1)){
+   # foo <- foo + 1 
+  #}
+  #if( foo > 2){
+   # loopCount <- 22
+  #}else{
     
-  }
+  #}
 }
 modelStr <- paste(paste(gsub('_','\\\\_',postAdjustCovars), collapse=', '),
                   'as fixed effects')
@@ -613,8 +617,17 @@ p = p + geom_vline(xintercept=NUM.SV, linetype = 'dashed') + ylab('Fraction of V
 p = p + theme(legend.position = c(0.8, 0.8), legend.title = element_blank())
 p
 # Estimate surrogate variables
-SURR.VAR = sva::sva(CQN.GENE_EXPRESSION$E.no.na,
-                    MODEL1, MODEL0, n.sv = NUM.SV, B = 30)$sv
+##JKG Add in in case lack of valuse adds singularity issue
+if( length(table(MODEL0[,'PCT_RIBOSOMAL_BASES'])) < .05*dim(MODEL0)[1] ){
+  MODEL0 <- MODEL0[,colnames(MODEL0)[colnames(MODEL0)!='PCT_RIBOSOMAL_BASES'] ]
+}else{}
+if( length(table(MODEL1[,'PCT_RIBOSOMAL_BASES'])) < .05*dim(MODEL1)[1] ){
+  MODEL1 <- MODEL1[,colnames(MODEL1)[colnames(MODEL1)!='PCT_RIBOSOMAL_BASES'] ]
+}else{}
+
+
+SURR.VAR = sva::sva(CQN.GENE_EXPRESSION$E.no.na, MODEL1, MODEL0, n.sv = NUM.SV, B = 30)$sv
+
 colnames(SURR.VAR) = paste0('SV',1:dim(SURR.VAR)[2])
 rownames(SURR.VAR) = rownames(MODEL1)
 # Re-estimate voom weights

@@ -115,26 +115,43 @@ METADATA_CE <- syn_temp$get(METADATA_CE_ID, version = 5)$path %>%
   dplyr::mutate(ID = paste(Donor_ID, Tissue, sep = '_')) %>%
   dplyr::rename(Gender = Sex, FLOWCELL = Flowcell)
 # Get picard metrics from synapse
-METADATA_PICARD_CE_ID <- 'syn20831294';
-ALL_USED_IDs[length(ALL_USED_IDs)+1] = METADATA_PICARD_CE_ID
-METADATA_PICARD_CE <- syn_temp$get(METADATA_PICARD_CE_ID, version = 1)$path %>%
-  read.table(sep='\t', header=T, stringsAsFactors=F) %>% 
-  dplyr::rename(ID = sample)
+#METADATA_PICARD_CE_ID <- 'syn20831294';
+#ALL_USED_IDs[length(ALL_USED_IDs)+1] = METADATA_PICARD_CE_ID
+#METADATA_PICARD_CE <- syn_temp$get(METADATA_PICARD_CE_ID, version = 1)$path %>%
+#  read.table(sep='\t', header=T, stringsAsFactors=F) %>% 
+#  dplyr::rename(ID = sample)
 # colnames(METADATA_PICARD_CE) = gsub('AlignmentSummaryMetrics__','',colnames(METADATA_PICARD_CE))
 # colnames(METADATA_PICARD_CE) = gsub('RnaSeqMetrics__','',colnames(METADATA_PICARD_CE))
-METADATA_PICARD_TC_ID <- 'syn8698211';
-ALL_USED_IDs[length(ALL_USED_IDs)+1] = METADATA_PICARD_TC_ID
-METADATA_PICARD_TC <- syn_temp$get(METADATA_PICARD_TC_ID, version = 1)$path %>%
-  read.table(sep='\t', header=T, stringsAsFactors=F) %>% 
-  dplyr::rename(ID = sample)
+#METADATA_PICARD_TC_ID <- 'syn8698211';
+#ALL_USED_IDs[length(ALL_USED_IDs)+1] = METADATA_PICARD_TC_ID
+#METADATA_PICARD_TC <- syn_temp$get(METADATA_PICARD_TC_ID, version = 1)$path %>%
+#  read.table(sep='\t', header=T, stringsAsFactors=F) %>% 
+#  dplyr::rename(ID = sample)
 # colnames(METADATA_PICARD_TC) = gsub('AlignmentSummaryMetrics__','',colnames(METADATA_PICARD_TC))
 # colnames(METADATA_PICARD_TC) = gsub('RnaSeqMetrics__','',colnames(METADATA_PICARD_TC))
 # Merge all metadata
+#METADATA = list(METADATA_TC, METADATA_CE) %>%
+#  data.table::rbindlist(use.names = T, fill = T) %>%
+#  dplyr::inner_join(list(METADATA_PICARD_TC, METADATA_PICARD_CE) %>% 
+#                      data.table::rbindlist(use.names = T, fill = T)) %>%
+#  as.data.frame
+
+METADATA.PICARD <- 'syn20831294';
+ALL_USED_IDs[length(ALL_USED_IDs)+1] = METADATA.PICARD
+METADATA.PICARD <- syn_temp$get(METADATA.PICARD, version = 1)$path %>%
+  read.table(sep='\t', header=T, stringsAsFactors=F) %>% 
+  dplyr::rename(ID = sample)
+
+#REplace Syn IDs
+row.names(METADATA.PICARD) <- as.character( Translator[ METADATA.PICARD$ID , ][,2] )
+METADATA.PICARD$ID <- row.names(METADATA.PICARD)
+
 METADATA = list(METADATA_TC, METADATA_CE) %>%
   data.table::rbindlist(use.names = T, fill = T) %>%
-  dplyr::inner_join(list(METADATA_PICARD_TC, METADATA_PICARD_CE) %>% 
+  dplyr::inner_join(list(METADATA.PICARD) %>% 
                       data.table::rbindlist(use.names = T, fill = T)) %>%
   as.data.frame
+
 colnames(METADATA) = gsub('AlignmentSummaryMetrics__','',colnames(METADATA))
 colnames(METADATA) = gsub('RnaSeqMetrics__','',colnames(METADATA))
 # Get gene specific parameters from synapse

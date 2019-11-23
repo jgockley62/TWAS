@@ -116,28 +116,41 @@ METADATA_CE <- syn_temp$get(METADATA_CE_ID, version = 5)$path %>%
   dplyr::mutate(ID = paste(Donor_ID, Tissue, sep = '_')) %>%
   dplyr::rename(Gender = Sex, FLOWCELL = Flowcell)
 # Get picard metrics from synapse
-METADATA_PICARD_CE_ID <- 'syn20831294';
-ALL_USED_IDs[length(ALL_USED_IDs)+1] = METADATA_PICARD_CE_ID
-METADATA_PICARD_CE <- syn_temp$get(METADATA_PICARD_CE_ID, version = 1)$path %>%
-  read.table(sep='\t', header=T, stringsAsFactors=F) %>% 
-  dplyr::rename(ID = sample)
+#METADATA_PICARD_CE_ID <- 'syn20831294';
+#ALL_USED_IDs[length(ALL_USED_IDs)+1] = METADATA_PICARD_CE_ID
+#METADATA_PICARD_CE <- syn_temp$get(METADATA_PICARD_CE_ID, version = 1)$path %>%
+#  read.table(sep='\t', header=T, stringsAsFactors=F) %>% 
+#  dplyr::rename(ID = sample)
 # colnames(METADATA_PICARD_CE) = gsub('AlignmentSummaryMetrics__','',colnames(METADATA_PICARD_CE))
 # colnames(METADATA_PICARD_CE) = gsub('RnaSeqMetrics__','',colnames(METADATA_PICARD_CE))
-METADATA_PICARD_TC_ID <- 'syn8698211';
-ALL_USED_IDs[length(ALL_USED_IDs)+1] = METADATA_PICARD_TC_ID
-METADATA_PICARD_TC <- syn_temp$get(METADATA_PICARD_TC_ID, version = 1)$path %>%
-  read.table(sep='\t', header=T, stringsAsFactors=F) %>% 
-  dplyr::rename(ID = sample)
+#METADATA_PICARD_TC_ID <- 'syn8698211';
+#ALL_USED_IDs[length(ALL_USED_IDs)+1] = METADATA_PICARD_TC_ID
+#METADATA_PICARD_TC <- syn_temp$get(METADATA_PICARD_TC_ID, version = 1)$path %>%
+#  read.table(sep='\t', header=T, stringsAsFactors=F) %>% 
+#  dplyr::rename(ID = sample)
 # colnames(METADATA_PICARD_TC) = gsub('AlignmentSummaryMetrics__','',colnames(METADATA_PICARD_TC))
 # colnames(METADATA_PICARD_TC) = gsub('RnaSeqMetrics__','',colnames(METADATA_PICARD_TC))
 # Merge all metadata
+
+METADATA.PICARD <- 'syn20831294';
+ALL_USED_IDs[length(ALL_USED_IDs)+1] = METADATA.PICARD
+METADATA.PICARD <- syn_temp$get(METADATA.PICARD, version = 1)$path %>%
+  read.table(sep='\t', header=T, stringsAsFactors=F) %>% 
+  dplyr::rename(ID = sample)
+
+#REplace Syn IDs
+row.names(METADATA.PICARD) <- as.character( Translator[ METADATA.PICARD$ID , ][,2] )
+METADATA.PICARD$ID <- row.names(METADATA.PICARD)
+
 METADATA = list(METADATA_TC, METADATA_CE) %>%
   data.table::rbindlist(use.names = T, fill = T) %>%
-  dplyr::inner_join(list(METADATA_PICARD_TC, METADATA_PICARD_CE) %>% 
+  dplyr::inner_join(list(METADATA.PICARD) %>% 
                       data.table::rbindlist(use.names = T, fill = T)) %>%
   as.data.frame
+
 colnames(METADATA) = gsub('AlignmentSummaryMetrics__','',colnames(METADATA))
 colnames(METADATA) = gsub('RnaSeqMetrics__','',colnames(METADATA))
+
 # Get gene specific parameters from synapse
 GENE.PARAM = syn_temp$get('syn21156161', version = 3)$path %>% 
   read.table(sep = '\t', header = T, stringsAsFactors = F)
@@ -740,6 +753,389 @@ RESIDUAL.SVA.GENE_EXPRESSION = RESIDUAL.SVA.GENE_EXPRESSION +
   VOOM.SVA.FIT$coefficients[,varsToAddIn] %*% t(VOOM.SVA.FIT$design[,varsToAddIn])
 ```
 
+### Differential expression analysis (with Tissue.SourceDiagnosis as primary variable)
+Differential expression is performed on the primary variable by controlling for covariates identified above
+
+Interpretation of Tissue.SourceDiagnosis
+1. CBE.AD: Alzheimers Disease samples from Cerebellum region
+2. CBE.CONTROL: Control samples from Cerebellum region
+3. CBE.PATH_AGE: Pathological ageing samples from Cerebellum region
+4. CBE.PSP: Palsy samples from Cerebellum region
+5. TCX.AD: Alzheimers Disease samples from temporal cortex region
+6. TCX.CONTROL: Control samples from temporal cortex region
+7. TCX.PATH_AGE: Pathalogical ageing samples from temporal cortex region
+8. TCX.PSP: Palsy samples from temporal cortex region
+
+Genes that are differentially expressed at an FDR <= 0.05 are
+```{r diff.exp, fig.height=10, fig.width=18}
+# Get design matrix
+DESIGN = getDesignMatrix(COVARIATES[, c(primaryVariable[1], postAdjustCovars), drop = F], Intercept = F)
+DESIGN$design = DESIGN$design[,linColumnFinder(DESIGN$design)$indepCols]
+# Re-estimate voom weights
+VOOM.WEIGHTS = voom(cnts,
+                    design=DESIGN$design, plot=F,
+                    block = COVARIATES$Donor_ID, 
+                    correlation = correlation$cor)
+# Fit linear model using new weights and new design
+FIT = lmFit(CQN.GENE_EXPRESSION$E,
+            weights = VOOM.WEIGHTS$weights,
+            design = VOOM.WEIGHTS$design,
+            block = COVARIATES$Donor_ID, 
+            correlation = correlation$cor)
+# Fit contrast
+contrast = makeContrasts(contrasts=c(
+  "Tissue.SourceDiagnosisCBE.AD-Tissue.SourceDiagnosisCBE.CONTROL",
+  "Tissue.SourceDiagnosisCBE.PATH_AGE-Tissue.SourceDiagnosisCBE.CONTROL",
+  "Tissue.SourceDiagnosisCBE.PSP-Tissue.SourceDiagnosisCBE.CONTROL",
+  "Tissue.SourceDiagnosisCBE.AD-Tissue.SourceDiagnosisCBE.PATH_AGE",
+  "Tissue.SourceDiagnosisTCX.AD-Tissue.SourceDiagnosisTCX.CONTROL",
+  "Tissue.SourceDiagnosisTCX.PATH_AGE-Tissue.SourceDiagnosisTCX.CONTROL",
+  "Tissue.SourceDiagnosisTCX.PSP-Tissue.SourceDiagnosisTCX.CONTROL",
+  "Tissue.SourceDiagnosisTCX.AD-Tissue.SourceDiagnosisTCX.PATH_AGE"),
+  levels = colnames(FIT$coefficients))
+FIT.CONTR = contrasts.fit(FIT, contrasts=contrast)
+FIT.CONTR = eBayes(FIT.CONTR)
+# Get differnetial expression
+DE = lapply(1:dim(contrast)[2], function(i, FIT){
+  topTable(FIT, coef=i, number = 50000, confint = T) %>%
+    rownameToFirstColumn('ensembl_gene_id')
+}, FIT.CONTR)
+names(DE) = colnames(contrast)
+DE = DE %>% 
+  rbindlist(idcol = 'Comparison') %>%
+  dplyr::mutate(Comparison = gsub('Tissue.SourceDiagnosis','',Comparison),
+                Study = 'MAYO',
+                Direction = logFC/abs(logFC),
+                Direction = factor(Direction, c(-1,1), c('-1' = 'DOWN', '1' = 'UP')),
+                Direction = as.character(Direction)) %>%
+  tidyr::separate(Comparison, c('from.state','to.state'), sep = '-') %>%
+  tidyr::separate(from.state, c('Tissue.ref','reference'), sep = '\\.') %>%
+  tidyr::separate(to.state, c('Tissue.ag','against'), sep = '\\.') %>%
+  tidyr::unite(Comparison, reference, against, sep = '-') %>%
+  left_join(GENE.PARAM %>%
+              dplyr::select(ensembl_gene_id, hgnc_symbol, percentage_gc_content, gene.length) %>%
+              unique())
+DE$Direction[DE$adj.P.Val > 0.05 | abs(DE$logFC) < log2(1.2)] = 'NONE'
+tmp = DE %>%
+  dplyr::select(ensembl_gene_id, Comparison, Direction, Tissue.ref) %>%
+  group_by(Tissue.ref, Comparison, Direction) %>%
+  dplyr::summarise(FDR_0_05_FC_1.2 = length(unique(ensembl_gene_id))) %>%
+  spread(Direction, FDR_0_05_FC_1.2) 
+kable(tmp)
+p = ggplot(DE, aes(y = -log10(adj.P.Val), x = logFC, color = Direction)) + geom_point() + xlim(c(-1,1))
+p = p + scale_color_manual(values = c('green','grey','red'))
+p = p + facet_grid(Tissue.ref+.~Comparison, scales = 'fixed')
+p
+all.diff.exp = list(SourceDiagnosis = DE)
+all.fit = list(SourceDiagnosis = FIT)
+```
+
+### Differential expression analysis (with Tissue.Diagnosis as primary variable)
+Differential expression is performed on the primary variable by controlling for covariates identified above
+
+Interpretation of Tissue.Diagnosis
+1. CER.AD: Alzheimers disease samples from cerebellum region
+2. CER.CONTROL: Control samples from cerebellum region
+3. CER.OTHER: Progressive supranuclear palsy and pathological aging samples from Cerebellum region
+4. TCX.AD: Alzheimers disease samples from temporal cortex region
+5. TCX.CONTROL: Control samples from temporal cortex region
+6. TCX.OTHER: Progressive supranuclear palsy and pathological aging samples from temporal cortex region
+
+Genes that are differentially expressed at an FDR <= 0.05 are
+```{r diff.exp.1, fig.height=10, fig.width=18}
+# Get design matrix
+DESIGN = getDesignMatrix(COVARIATES[, c(primaryVariable[2], postAdjustCovars), drop = F], Intercept = F)
+DESIGN$design = DESIGN$design[,linColumnFinder(DESIGN$design)$indepCols]
+# Re-estimate voom weights
+VOOM.WEIGHTS = voom(cnts,
+                    design=DESIGN$design, plot=F,
+                    block = COVARIATES$Donor_ID, 
+                    correlation = correlation$cor)
+# Fit linear model using new weights and new design
+FIT = lmFit(CQN.GENE_EXPRESSION$E,
+            weights = VOOM.WEIGHTS$weights,
+            design = VOOM.WEIGHTS$design,
+            block = COVARIATES$Donor_ID, 
+            correlation = correlation$cor)
+# Fit contrast
+contrast = makeContrasts(contrasts=c(
+  "Tissue.DiagnosisCBE.AD-Tissue.DiagnosisCBE.CONTROL",
+  "Tissue.DiagnosisCBE.AD-Tissue.DiagnosisCBE.OTHER",
+  "Tissue.DiagnosisCBE.OTHER-Tissue.DiagnosisCBE.CONTROL",
+  "Tissue.DiagnosisTCX.AD-Tissue.DiagnosisTCX.CONTROL",
+  "Tissue.DiagnosisTCX.AD-Tissue.DiagnosisTCX.OTHER",
+  "Tissue.DiagnosisTCX.OTHER-Tissue.DiagnosisTCX.CONTROL"),
+  levels = colnames(FIT$coefficients))
+FIT.CONTR = contrasts.fit(FIT, contrasts=contrast)
+FIT.CONTR = eBayes(FIT.CONTR)
+# Get differnetial expression
+DE = lapply(1:dim(contrast)[2], function(i, FIT){
+  topTable(FIT, coef=i, number = 50000, confint = T) %>%
+    rownameToFirstColumn('ensembl_gene_id')
+}, FIT.CONTR)
+names(DE) = colnames(contrast)
+DE = DE %>% 
+  rbindlist(idcol = 'Comparison') %>%
+  dplyr::mutate(Comparison = gsub('Tissue.Diagnosis','',Comparison),
+                Study = 'MAYO',
+                Direction = logFC/abs(logFC),
+                Direction = factor(Direction, c(-1,1), c('-1' = 'DOWN', '1' = 'UP')),
+                Direction = as.character(Direction)) %>%
+  tidyr::separate(Comparison, c('from.state','to.state'), sep = '-') %>%
+  tidyr::separate(from.state, c('Tissue.ref','reference'), sep = '\\.') %>%
+  tidyr::separate(to.state, c('Tissue.ag','against'), sep = '\\.') %>%
+  tidyr::unite(Comparison, reference, against, sep = '-') %>%
+  left_join(GENE.PARAM %>%
+              dplyr::select(ensembl_gene_id, hgnc_symbol, percentage_gc_content, gene.length) %>%
+              unique())
+DE$Direction[DE$adj.P.Val > 0.05 | abs(DE$logFC) < log2(1.2)] = 'NONE'
+tmp = DE %>%
+  dplyr::select(ensembl_gene_id, Comparison, Direction, Tissue.ref) %>%
+  group_by(Tissue.ref, Comparison, Direction) %>%
+  dplyr::summarise(FDR_0_05_FC_1.2 = length(unique(ensembl_gene_id))) %>%
+  spread(Direction, FDR_0_05_FC_1.2) 
+kable(tmp)
+p = ggplot(DE, aes(y = -log10(adj.P.Val), x = logFC, color = Direction)) + geom_point() + xlim(c(-1,1))
+p = p + scale_color_manual(values = c('green','grey','red'))
+p = p + facet_grid(Tissue.ref+.~Comparison, scales = 'fixed')
+p
+all.diff.exp = c(all.diff.exp, list(Diagnosis = DE))
+all.fit = c(all.fit, list(Diagnosis = FIT))
+```
+
+### Associate differential expression results with gc content, gene length and average expression
+```{r associate.de, fig.height=10, fig.width=15}
+pl = list()
+pl[[1]] = ggplot(DE %>%
+                   dplyr::filter(Comparison == 'AD-CONTROL'), 
+                 aes(x = log10(gene.length), y = logFC, color = Direction)) + geom_point() 
+pl[[1]] = pl[[1]] + geom_smooth(method = 'loess', inherit.aes = FALSE, aes(x = log10(gene.length), y = logFC))
+pl[[1]] = pl[[1]] + facet_grid(Tissue.ref+.~Comparison) + scale_color_manual(values = c('green','grey','red'))
+pl[[1]] = pl[[1]] + theme(legend.position = 'top')
+pl[[2]] = ggplot(DE %>%
+                   dplyr::filter(Comparison == 'AD-CONTROL'), 
+                 aes(x = percentage_gc_content, y = logFC, color = Direction)) + geom_point()
+pl[[2]] = pl[[2]] + geom_smooth(method = 'loess', inherit.aes = FALSE, aes(x = percentage_gc_content, y = logFC))
+pl[[2]] = pl[[2]] + facet_grid(Tissue.ref+.~Comparison) + scale_color_manual(values = c('green','grey','red'))
+pl[[2]] = pl[[2]] + theme(legend.position = 'top')
+pl[[3]] = ggplot(DE %>%
+                   dplyr::filter(Comparison == 'AD-CONTROL'), 
+                 aes(x = AveExpr, y = logFC, color = Direction)) + geom_point()
+pl[[3]] = pl[[3]] + geom_smooth(method = 'loess', inherit.aes = FALSE, aes(x = AveExpr, y = logFC))
+pl[[3]] = pl[[3]] + facet_grid(Tissue.ref+.~Comparison) + scale_color_manual(values = c('green','grey','red'))
+pl[[3]] = pl[[3]] + theme(legend.position = 'top')
+multiplot(plotlist = pl, cols = 3)
+```
+
+### Differential expression analysis (with Tissue.APOE as primary variable)
+Differential expression is performed on the primary variable by controlling for covariates identified above
+
+Interpretation of Tissue.Diagnosis
+1. CBE.0: No APOE4 allele in cerebellum
+2. CBE.1: 1 APOE4 allele in cerebellum
+3. CBE.2: 2 APOE4 allele in cerebellum
+4. TCX.0: No APOE4 allele in temporal cortex
+5. TCX.1: 1 APOE4 allele in temporal cortex
+6. TCX.2: 2 APOE4 allele in temporal cortex
+
+Genes that are differentially expressed at an FDR <= 0.05 are
+```{r diff.exp.2, fig.height=10, fig.width=18}
+# Get design matrix
+DESIGN = getDesignMatrix(COVARIATES[, c(primaryVariable[3], postAdjustCovars), drop = F], Intercept = F)
+DESIGN$design = DESIGN$design[,linColumnFinder(DESIGN$design)$indepCols]
+# Re-estimate voom weights
+VOOM.WEIGHTS = voom(cnts,
+                    design=DESIGN$design, plot=F,
+                    block = COVARIATES$Donor_ID, 
+                    correlation = correlation$cor)
+# Fit linear model using new weights and new design
+FIT = lmFit(CQN.GENE_EXPRESSION$E,
+            weights = VOOM.WEIGHTS$weights,
+            design = VOOM.WEIGHTS$design,
+            block = COVARIATES$Donor_ID, 
+            correlation = correlation$cor)
+# Fit contrast
+contrast = makeContrasts(contrasts=c(
+  "Tissue.APOE4CBE.2-Tissue.APOE4CBE.0",
+  "Tissue.APOE4CBE.2-Tissue.APOE4CBE.1",
+  "Tissue.APOE4CBE.1-Tissue.APOE4CBE.0",
+  "Tissue.APOE4TCX.2-Tissue.APOE4TCX.0",
+  "Tissue.APOE4TCX.2-Tissue.APOE4TCX.1",
+  "Tissue.APOE4TCX.1-Tissue.APOE4TCX.0"),
+  levels = colnames(FIT$coefficients))
+FIT.CONTR = contrasts.fit(FIT, contrasts=contrast)
+FIT.CONTR = eBayes(FIT.CONTR)
+# Get differnetial expression
+DE = lapply(1:dim(contrast)[2], function(i, FIT){
+  topTable(FIT, coef=i, number = 50000, confint = T) %>%
+    rownameToFirstColumn('ensembl_gene_id')
+}, FIT.CONTR)
+names(DE) = colnames(contrast)
+DE = DE %>% 
+  rbindlist(idcol = 'Comparison') %>%
+  dplyr::mutate(Comparison = gsub('Tissue.APOE4','',Comparison),
+                Study = 'MAYO',
+                Direction = logFC/abs(logFC),
+                Direction = factor(Direction, c(-1,1), c('-1' = 'DOWN', '1' = 'UP')),
+                Direction = as.character(Direction)) %>%
+  tidyr::separate(Comparison, c('from.state','to.state'), sep = '-') %>%
+  tidyr::separate(from.state, c('Tissue.ref','reference'), sep = '\\.') %>%
+  tidyr::separate(to.state, c('Tissue.ag','against'), sep = '\\.') %>%
+  dplyr::mutate(reference = paste0('APOE4',reference),
+                against = paste0('APOE4',against)) %>%
+  tidyr::unite(Comparison, reference, against, sep = '-') %>%
+  left_join(GENE.PARAM %>%
+              dplyr::select(ensembl_gene_id, hgnc_symbol, percentage_gc_content, gene.length) %>%
+              unique())
+DE$Direction[DE$adj.P.Val > 0.05 | abs(DE$logFC) < log2(1.2)] = 'NONE'
+tmp = DE %>%
+  dplyr::select(ensembl_gene_id, Comparison, Direction, Tissue.ref) %>%
+  group_by(Tissue.ref, Comparison, Direction) %>%
+  dplyr::summarise(FDR_0_05_FC_1.2 = length(unique(ensembl_gene_id))) %>%
+  spread(Direction, FDR_0_05_FC_1.2) 
+kable(tmp)
+p = ggplot(DE, aes(y = -log10(adj.P.Val), x = logFC, color = Direction)) + geom_point() + xlim(c(-1,1))
+p = p + scale_color_manual(values = c('green','grey','red'))
+p = p + facet_grid(Tissue.ref+.~Comparison, scales = 'fixed')
+p
+all.diff.exp = c(all.diff.exp, list(APOE4 = DE))
+all.fit = c(all.fit, list(APOE4 = FIT))
+```
+
+### Differential expression analysis (with Tissue.Diagnosis x Sex as primary variable)
+Differential expression is performed on the primary variable by controlling for covariates identified above
+
+Genes that are differentially expressed at an FDR <= 0.05 are
+```{r diff.exp2, fig.height=5, fig.width=18}
+# Get design matrix
+COVARIATES$Tissue.Diagnosis.Sex = paste(COVARIATES$Tissue.Diagnosis, COVARIATES$Sex, sep = '.') %>%
+  factor()
+DESIGN = getDesignMatrix(COVARIATES[, c('Tissue.Diagnosis.Sex', setdiff(postAdjustCovars, 'Sex')), drop = F], 
+                         Intercept = F)
+DESIGN$design = DESIGN$design[,linColumnFinder(DESIGN$design)$indepCols]
+# Re-estimate voom weights
+VOOM.WEIGHTS = voom(cnts,
+                    design=DESIGN$design, plot=F,
+                    block = COVARIATES$Donor_ID, 
+                    correlation = correlation$cor)
+# Fit linear model using new weights and new design
+FIT = lmFit(CQN.GENE_EXPRESSION$E,
+            weights = VOOM.WEIGHTS$weights,
+            design = VOOM.WEIGHTS$design,
+            block = COVARIATES$Donor_ID, 
+            correlation = correlation$cor)
+# Fit contrast
+contrast = makeContrasts(contrasts=c(
+  "Tissue.Diagnosis.SexCBE.AD.FEMALE-Tissue.Diagnosis.SexCBE.CONTROL.FEMALE",
+  "Tissue.Diagnosis.SexCBE.AD.MALE-Tissue.Diagnosis.SexCBE.CONTROL.MALE",
+  
+  "Tissue.Diagnosis.SexTCX.AD.FEMALE-Tissue.Diagnosis.SexTCX.CONTROL.FEMALE",
+  "Tissue.Diagnosis.SexTCX.AD.MALE-Tissue.Diagnosis.SexTCX.CONTROL.MALE"),
+  levels = colnames(FIT$coefficients))
+FIT.CONTR = contrasts.fit(FIT, contrasts=contrast)
+FIT.CONTR = eBayes(FIT.CONTR)
+# Get differnetial expression
+DE = lapply(1:dim(contrast)[2], function(i, FIT){
+  topTable(FIT, coef=i, number = 50000, confint = T) %>%
+    rownameToFirstColumn('ensembl_gene_id')
+}, FIT.CONTR)
+names(DE) = colnames(contrast)
+DE = DE %>% 
+  rbindlist(idcol = 'Comparison') %>%
+  dplyr::mutate(Comparison = gsub('Tissue.Diagnosis.Sex','',Comparison),
+                Study = 'MAYO',
+                Direction = logFC/abs(logFC),
+                Direction = factor(Direction, c(-1,1), c('-1' = 'DOWN', '1' = 'UP')),
+                Direction = as.character(Direction)) %>%
+  tidyr::separate(Comparison, c('from.state','to.state'), sep = '-') %>%
+  tidyr::separate(from.state, c('Tissue.ref','Dx.ref','Sex.ref'), sep = '\\.') %>%
+  tidyr::separate(to.state, c('Tissue.ag','Dx.ag','Sex.ag'), sep = '\\.') %>%
+  tidyr::unite(Comparison, Dx.ref, Dx.ag, sep = '-') %>%
+  left_join(GENE.PARAM %>%
+              dplyr::select(ensembl_gene_id, hgnc_symbol, percentage_gc_content, gene.length) %>%
+              unique())
+DE$Direction[DE$adj.P.Val > 0.05 | abs(DE$logFC) < log2(1.2)] = 'NONE'
+tmp = DE %>%
+  dplyr::select(ensembl_gene_id, Comparison, Direction, Tissue.ref, Sex.ref) %>%
+  group_by(Tissue.ref, Sex.ref, Comparison, Direction) %>%
+  dplyr::summarise(FDR_0_05_FC_1.2 = length(unique(ensembl_gene_id))) %>%
+  spread(Direction, FDR_0_05_FC_1.2) 
+kable(tmp)
+p = ggplot(DE, aes(y = -log10(adj.P.Val), x = logFC, color = Direction)) + geom_point() + xlim(c(-1,1))
+p = p + scale_color_manual(values = c('green','grey','red'))
+p = p + facet_grid(Comparison+.~Tissue.ref+Sex.ref, scales = 'fixed')
+p
+all.diff.exp = c(all.diff.exp, list(Diagnosis.Sex = DE))
+all.fit = c(all.fit, list(Diagnosis.Sex = FIT))
+```
+
+### Differential expression analysis (with Tissue.Diagnosis x AgeAtDeath as primary variable)
+Differential expression is performed on the primary variable by controlling for covariates identified above
+
+Genes that are differentially expressed at an FDR <= 0.05 are
+```{r diff.exp3, fig.height=5, fig.width=18, cache = FALSE}
+# Get design matrix
+DESIGN = getDesignMatrix(COVARIATES[, c('Tissue.Diagnosis', setdiff(postAdjustCovars, 'AgeAtDeath')), drop = F], 
+                         Intercept = F)
+DESIGN$design[,grep('Tissue.Diagnosis',colnames(DESIGN$design))] = DESIGN$design[,grep('Tissue.Diagnosis',colnames(DESIGN$design))] * COVARIATES[,'AgeAtDeath']
+colnames(DESIGN$design)[grep('Tissue.Diagnosis',colnames(DESIGN$design))] = 
+  paste(colnames(DESIGN$design)[grep('Tissue.Diagnosis',colnames(DESIGN$design))],'AOD', sep = '.')
+DESIGN$design = DESIGN$design[,linColumnFinder(DESIGN$design)$indepCols]
+# Re-estimate voom weights
+VOOM.WEIGHTS = voom(cnts,
+                    design=DESIGN$design, plot=F,
+                    block = COVARIATES$Donor_ID, 
+                    correlation = correlation$cor)
+# Fit linear model using new weights and new design
+FIT = lmFit(CQN.GENE_EXPRESSION$E,
+            weights = VOOM.WEIGHTS$weights,
+            design = VOOM.WEIGHTS$design,
+            block = COVARIATES$Donor_ID, 
+            correlation = correlation$cor)
+# Fit contrast
+contrast = makeContrasts(contrasts=c(
+  "Tissue.DiagnosisCBE.AD.AOD-Tissue.DiagnosisCBE.CONTROL.AOD",
+  "Tissue.DiagnosisTCX.AD.AOD-Tissue.DiagnosisTCX.CONTROL.AOD"),
+  levels = colnames(FIT$coefficients))
+FIT.CONTR = contrasts.fit(FIT, contrasts=contrast)
+FIT.CONTR = eBayes(FIT.CONTR)
+# Get differnetial expression
+DE = lapply(1:dim(contrast)[2], function(i, FIT){
+  topTable(FIT, coef=i, number = 50000, confint = T) %>%
+    rownameToFirstColumn('ensembl_gene_id')
+}, FIT.CONTR)
+names(DE) = colnames(contrast)
+DE = DE %>% 
+  rbindlist(idcol = 'Comparison') %>%
+  dplyr::mutate(Comparison = gsub('Tissue.Diagnosis','',Comparison),
+                Study = 'MAYO',
+                Direction = logFC/abs(logFC),
+                Direction = factor(Direction, c(-1,1), c('-1' = 'DOWN', '1' = 'UP')),
+                Direction = as.character(Direction)) %>%
+  tidyr::separate(Comparison, c('from.state','to.state'), sep = '-') %>%
+  tidyr::separate(from.state, c('Tissue.ref','Dx.ref','AOD.ref'), sep = '\\.') %>%
+  tidyr::separate(to.state, c('Tissue.ag','Dx.ag','AOD.ag'), sep = '\\.') %>%
+  tidyr::unite(Comparison, Dx.ref, Dx.ag, sep = '-') %>%
+  left_join(GENE.PARAM %>%
+              dplyr::select(ensembl_gene_id, hgnc_symbol, percentage_gc_content, gene.length) %>%
+              unique())
+DE$Direction[DE$adj.P.Val > 0.05 | abs(DE$logFC) < log2(1.2)] = 'NONE'
+tmp = DE %>%
+  dplyr::select(ensembl_gene_id, Comparison, Direction, Tissue.ref, AOD.ref) %>%
+  group_by(Tissue.ref, AOD.ref, Comparison, Direction) %>%
+  dplyr::summarise(FDR_0_05_FC_1.2 = length(unique(ensembl_gene_id))) %>%
+  spread(Direction, FDR_0_05_FC_1.2) 
+kable(tmp)
+p = ggplot(DE, aes(y = -log10(adj.P.Val), x = logFC, color = Direction)) + geom_point() + xlim(c(-1,1))
+p = p + scale_color_manual(values = c('green','grey','red'))
+p = p + facet_grid(Comparison+.~Tissue.ref+AOD.ref, scales = 'fixed')
+p
+all.diff.exp = c(all.diff.exp, list(Diagnosis.AOD = DE))
+all.fit = c(all.fit, list(Diagnosis.AOD = FIT))
+```
+
+
+
 ```{r synapse.parameters, include=FALSE, cache=TRUE}
 parentId = 'syn21277617';
 activityName = 'Covariate Regression';
@@ -846,7 +1242,21 @@ RESIDUAL.NET.GENE_EXPRESSION %>%
 ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='MAYO_Regressed_netResidualExpression.tsv', name = 'Normalised, and covariates removed residual expression (for network analysis)', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
   all.annotations$dataSubType = 'residualGeneExpForNetAnlz'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
-  
+
+# Store differential expression results
+rbindlist(all.diff.exp, use.names = T, fill = T, idcol = 'Model') %>%
+  write.table(file = 'MAYO_CBE_TCX_DiffExpression.tsv', sep = '\t', row.names=F, quote=F)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='MAYO_CBE_TCX_DiffExpression.tsv', name = 'Differential Expression Results (Tissue.Diagnosis)', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$dataSubType = 'diffExp'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
+
+# Store all model fits
+save(list = 'all.fit', file = 'MAYO_CBE_TCX_allfits.RData')
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='MAYO_CBE_TCX_allfits.RData', name = 'All model fits (Tissue.Diagnosis)', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$dataSubType = 'modelFits'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
 stopCluster(cl)
 ```
 
