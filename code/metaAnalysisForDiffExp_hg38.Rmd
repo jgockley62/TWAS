@@ -33,12 +33,12 @@ knitr::opts_chunk$set(
 ```
 
 ```{r synapse.parameters, include=FALSE, cache=TRUE}
-parentId = 'syn21313899';
-activityName = 'Meta analysis of differential expression';
+parentId = 'syn18936948';
+activityName = 'Meta analysis of differential expression hg38 Reprocessed';
 activityDescription = 'Fixed and random effect meta-analysis of AMP-AD data hg38 Reprocessed Data (all 7 brain regions)';
 thisFileName <- 'metaAnalysisForDiffExp_hg38.Rmd'
 # Github link
-thisRepo <- getRepo(repository = "jgockley62/TWAS", ref="branch", refName='geneLevelAnalysis')
+thisRepo <- getRepo(repository = "jgockley62/TWAS", ref="branch", refName='master')
 thisFile <- getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thisFileName))
 ```
 
@@ -69,8 +69,8 @@ covar$ROSMAP = covar$ROSMAP %>%
   dplyr::select(SampleID, Sex, Diagnosis, APOE4) %>%
   dplyr::mutate(Tissue = 'DLPFC')
 covar$MSSM = covar$MSSM %>%
-  dplyr::select(SampleID, SEX, Tissue.Diagnosis, Tissue.APOE4) %>%
-  dplyr::rename(Sex = SEX) %>%
+  dplyr::select(SampleID, Sex, Tissue.Diagnosis, Tissue.APOE4) %>%
+  dplyr::rename(Sex = Sex) %>%
   tidyr::separate(Tissue.Diagnosis, c('Tissue1', 'Diagnosis'), sep = '\\.') %>%
   tidyr::separate(Tissue.APOE4, c('Tissue', 'APOE4'), sep = '\\.')
 covar$MAYO = covar$MAYO %>%
@@ -245,51 +245,42 @@ all.gs = c(all.gs, gs)
 ## Store results in synapse
 ```{r syn.store, cache = FALSE, include=FALSE}
 # Create folder to store results in synapse
-CODE = Folder(name = 'Meta Analysis', parentId = parentId)
-CODE = synStore(CODE)
+#CODE = Folder(name = 'MetaAnalysis', parentId = parentId)
+#CODE = synStore(CODE)
+CODE <- syn_temp$store(synapseclient$Folder(name = "MetaAnalysis", parentId = parentId))
+
+Syns_Used <- c( 'syn8456631', 'syn8484996', 'syn8466814', 'syn21292041', 'syn21285564', 'syn21291908' )
 # Write results to files
 fwrite(meta.anlz.ad_cntrl, file = 'meta.anlz.ad_cntrl.tsv', sep = '\t', row.names = F, quote = F)
-obj = File('meta.anlz.ad_cntrl.tsv', 
-           name = 'AD-Control meta-analysis across 7 brain regions', 
-           parentId = CODE$properties$id)
-obj = synStore(obj, activityName = activityName, activityDescription = activityDescription,
-               used = all.used.ids, executed = thisFile)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='meta.anlz.ad_cntrl.tsv', name = 'AD-Control meta-analysis across 7 brain regions hg38 Reprocessed Data', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+
+
 # Write results to files
 fwrite(meta.anlz.ad_cntrl.sex, file = 'meta.anlz.ad_cntrl.sex.tsv', sep = '\t', row.names = F, quote = F)
-obj = File('meta.anlz.ad_cntrl.sex.tsv', 
-           name = 'AD-Control meta-analysis across 7 brain regions (sex specific)', 
-           parentId = CODE$properties$id)
-obj = synStore(obj, activityName = activityName, activityDescription = activityDescription,
-               used = all.used.ids, executed = thisFile)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='meta.anlz.ad_cntrl.sex.tsv', name = 'AD-Control meta-analysis across 7 brain regions (sex specific) hg38 Reprocessed Data', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+
 # Write results to files
 fwrite(meta.anlz.apoe4_2_0, file = 'meta.anlz.apoe4_2_0.sex.tsv', sep = '\t', row.names = F, quote = F)
-obj = File('meta.anlz.apoe4_2_0.sex.tsv', 
-           name = 'AD-Control meta-analysis across 7 brain regions (APOE4)', 
-           parentId = CODE$properties$id)
-obj = synStore(obj, activityName = activityName, activityDescription = activityDescription,
-               used = all.used.ids, executed = thisFile)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='meta.anlz.apoe4_2_0.sex.tsv', name = 'AD-Control meta-analysis across 7 brain regions (APOE4) hg38 Reprocessed Data', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+
 # Write results to files
 save(list = c('all.gs'), file = 'all.gensets.RData')
-obj = File('all.gensets.RData', 
-           name = 'All gene sets (in RData format)', 
-           parentId = CODE$properties$id)
-obj = synStore(obj, activityName = activityName, activityDescription = activityDescription,
-               used = all.used.ids, executed = thisFile)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='all.gensets.RData', name = 'All gene sets (in RData format) hg38 Reprocessed Data', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+
 ```
 
 ```{r knit2synapse, eval=FALSE}
-#library(synapser)
-#library(knit2synapse) # get the package from devtools::install_github('Sage-Bionetworks/knit2synapse')
-#synLogin()
 synapseclient <- reticulate::import("synapseclient")
 syn_temp <- synapseclient$Synapse()
-
 syn_temp$login()
-setwd("~/TWAS/code/")
 
-knit2synapse::knitToFolderEntity(file = "metaAnalysisForDiffExp_hg38.Rmd",
-                                 parentId = "syn21313899",
-                                 entityName = "Meta Analysis")
+setwd("~/TWAS/code/")
+source("~/TWAS/utilityFunctions/knitfile2synapseClient.R")
+source("~/TWAS/utilityFunctions/hook_synapseMdSyntax_plot.R")
+
+createAndKnitToFolderEntityClient(file = "metaAnalysisForDiffExp_hg38.Rmd",
+                                 parentId = "syn18936948",
+                                 folderName = "MetaAnalysis")
 ```
 
 ## Source code
