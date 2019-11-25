@@ -1,0 +1,316 @@
+---
+title: "Meta analysis of reprocessed RNASeq data from AMP-AD (all 6 brain regions)"
+author: "Thanneer Perumal"
+date: "`r date()`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r libs, echo=FALSE, warning=FALSE, message=FALSE, include=FALSE}
+## It is assumed your working directory is where this file
+## Load required libraries
+library(CovariateAnalysis)
+library(data.table)
+library(plyr)
+library(tidyverse)
+#library(synapser)
+library(knitr)
+library(githubr)
+#synapser::synLogin()
+library(doParallel)
+library(foreach)
+cl = makeCluster(detectCores()-2)
+registerDoParallel(cl)
+options(xtable.type="html")
+knitr::opts_chunk$set(
+  echo=FALSE,
+  warning=FALSE,
+  message=FALSE,
+  error = FALSE,
+  tidy = FALSE,
+  cache = TRUE)
+```
+
+```{r synapse.parameters, include=FALSE, eval=FALSE, cache=TRUE}
+parentId = 'syn18936948';
+activityName = 'Meta analysis of differential expression (No CBE)';
+activityDescription = 'Fixed and random effect meta-analysis of AMP-AD data (all 6 brain regions)';
+thisFileName <- 'metaAnalysisForDiffExp_NoCBE.Rmd'
+# Github link
+thisRepo <- getRepo(repository = "jgockley62/TWAS", ref="branch", refName='master')
+thisFile <- getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thisFileName))
+```
+
+## Data download
+### Get study specific covariates and adjusted expression from synapse
+
+```{r get.exp}
+# Read covariates
+# covar.ids = tibble(study = c("ROSMAP", "MSSM", "MAYO"), 
+#                    synid = c("syn8456631", "syn8484996", "syn8466814"), 
+#                    version = c("27", "20", "20"))
+# covar.md =  covar.ids %>%
+#   dplyr::mutate(data = map2(synid, version, 
+#                             ~ readr::read_tsv(synGet(.x, version = .y)$path, col_types = cols(.default = "c"))))
+# covar = unnest(covar.md, data) 
+# Read adjusted expression
+covar.ids = c(ROSMAP = 'syn8456631', MSSM = 'syn8484996', MAYO = 'syn8466814')
+all.used.ids = as.character(covar.ids)
+covar =  covar.ids %>%
+  lapply(function(x) readr::read_tsv(syn_temp$get(x)$path, col_types = cols(.default = "c")))
+#_#expr.ids = c(ROSMAP = 'syn8456719', MSSM = 'syn8485027', MAYO = 'syn8466826')
+expr.ids = c(ROSMAP = 'syn21292041', MSSM = 'syn21285564', MAYO = 'syn21291908')
+all.used.ids = c(all.used.ids, as.character(expr.ids))
+expr =  expr.ids %>%
+  lapply(function(x) readr::read_tsv(syn_temp$get(x)$path, col_types = cols(.default = "c"))) %>%
+  plyr::join_all(type = 'inner')
+```
+
+```{r modify.covar}
+covar$ROSMAP = covar$ROSMAP %>%
+  dplyr::select(SampleID, Sex, Diagnosis, APOE4) %>%
+  dplyr::mutate(Tissue = 'DLPFC')
+covar$MSSM = covar$MSSM %>%
+  dplyr::select(SampleID, Sex, Tissue.Diagnosis, Tissue.APOE4) %>%
+  tidyr::separate(Tissue.Diagnosis, c('Tissue1', 'Diagnosis'), sep = '\\.') %>%
+  tidyr::separate(Tissue.APOE4, c('Tissue', 'APOE4'), sep = '\\.')
+covar$MAYO = covar$MAYO %>%
+  dplyr::select(SampleID, Sex, Tissue.Diagnosis, Tissue.APOE4) %>%
+  tidyr::separate(Tissue.Diagnosis, c('Tissue1', 'Diagnosis'), sep = '\\.') %>%
+  tidyr::separate(Tissue.APOE4, c('Tissue', 'APOE4'), sep = '\\.')
+covar = covar %>%
+  data.table::rbindlist(use.names = T, fill = T, idcol = 'Study') %>%
+  dplyr::select(-Tissue1)
+
+#Remove CBE
+covar <- covar[(covar$Tissue == 'CBE') == F, ]
+#row.names(expr) <- expr$ensembl_gene_id
+expr <- expr[, c('ensembl_gene_id', covar$SampleID) ]
+for(i in 2:dim(expr)[2]){
+  expr[,i] <- as.numeric(expr[,i])
+}
+
+```
+
+## Perform fixed and random effect meta-analysis for each gene across 7 different brain regions
+#### Meta-analysis of AD-CONTROL
+```{r ad.cntrl}
+# Mean and sd of gene expression in each tissue x diagnosis group
+tissue.dx.summary = plyr::ddply(covar, .(Tissue, Diagnosis), .fun = function(x, y){
+  data.frame(ensembl_gene_id = y$ensembl_gene_id,
+             n = dim(x)[1],
+             mn = rowMeans(y[,x$SampleID], na.rm = T),
+             sd = apply(y[,x$SampleID], 1, sd, na.rm = T))
+}, expr)
+# Perform meta-analysis for AD-CONTROL comparison
+meta.anlz.ad_cntrl = plyr::ddply(tissue.dx.summary, .(ensembl_gene_id), .fun = function(x){
+  exp.effect = dplyr::filter(x, Diagnosis == 'AD')
+  rownames(exp.effect) = exp.effect$Tissue
+  cntrl.effect = dplyr::filter(x, Diagnosis == 'CONTROL')
+  rownames(cntrl.effect) = cntrl.effect$Tissue
+  cntrl.effect = cntrl.effect[rownames(exp.effect), ]
+  
+  tmp = metacont(exp.effect$n, exp.effect$mn, exp.effect$sd, 
+                 cntrl.effect$n, cntrl.effect$mn, cntrl.effect$sd,
+                 studlab = exp.effect$Tissue,
+                 sm = 'SMD', method.smd = 'Hedges',
+                 method.tau = 'REML')
+  
+  return(data.frame(tmp[c('TE.fixed', 'seTE.fixed', 'lower.fixed', 'upper.fixed', 'zval.fixed', 'pval.fixed',
+                   'TE.random', 'seTE.random', 'lower.random', 'upper.random', 'zval.random', 'pval.random',
+                   'Q', 'tau', 'H', 'I2')]))
+}, .parallel = TRUE, .paropts = list(.packages = c('meta', 'dplyr'))) %>%
+  dplyr::mutate(fdr.fixed = p.adjust(pval.fixed, method = 'fdr'),
+                fdr.random = p.adjust(pval.random, method = 'fdr'))
+p = list()
+p[[1]] = ggplot(meta.anlz.ad_cntrl, aes(x = -log10(fdr.fixed), y = -log10(fdr.random)))+geom_point()
+p[[2]] = ggplot(meta.anlz.ad_cntrl, aes(y = -log10(fdr.fixed), x = TE.fixed))+geom_point()+geom_hline(yintercept = -log10(0.05), color = 'red')
+p[[3]] = ggplot(meta.anlz.ad_cntrl, aes(y = -log10(fdr.random), x = TE.random))+geom_point()+geom_hline(yintercept = -log10(0.05), color = 'red')
+#ggpubr::ggarrange(plotlist = p, ncol = 3, nrow = 1)
+# Get gene sets
+tmp = meta.anlz.ad_cntrl %>%
+  dplyr::select(ensembl_gene_id, TE.fixed, TE.random, fdr.fixed, fdr.random) %>%
+  tidyr::gather(Feature, Value, -ensembl_gene_id) %>%
+  tidyr::separate(Feature, c('Feature1', 'Model'), sep = '\\.') %>%
+  tidyr::spread(Feature1, Value) %>%
+  dplyr::filter(fdr <= 0.05, abs(TE) >= 0.2)
+tmp$Direction[tmp$TE <= 0] = 'DOWN'
+tmp$Direction[tmp$TE >= 0] = 'UP'
+gs = tmp %>%
+  plyr::dlply(.(Model, Direction), .fun = function(x){
+    unique(x$ensembl_gene_id)
+  })
+names(gs) = paste0('ad.control.', names(gs))
+all.gs = gs
+```
+
+#### Meta-analysis of AD-CONTROL (sex specific)
+```{r ad.cntrl.sex}
+# Mean and sd of gene expression in each tissue x diagnosis x sex group
+tissue.dx.sex.summary = plyr::ddply(covar, .(Tissue, Diagnosis, Sex), .fun = function(x, y){
+  data.frame(ensembl_gene_id = y$ensembl_gene_id,
+             n = dim(x)[1],
+             mn = rowMeans(y[,x$SampleID], na.rm = T),
+             sd = apply(y[,x$SampleID], 1, sd, na.rm = T))
+}, expr)
+# Perform meta-analysis for AD-CONTROL comparison (sex specific)
+meta.anlz.ad_cntrl.sex = plyr::ddply(tissue.dx.sex.summary, .(ensembl_gene_id, Sex), .fun = function(x){
+  exp.effect = dplyr::filter(x, Diagnosis == 'AD')
+  rownames(exp.effect) = exp.effect$Tissue
+  cntrl.effect = dplyr::filter(x, Diagnosis == 'CONTROL')
+  rownames(cntrl.effect) = cntrl.effect$Tissue
+  cntrl.effect = cntrl.effect[rownames(exp.effect), ]
+  
+  tmp = metacont(exp.effect$n, exp.effect$mn, exp.effect$sd, 
+                 cntrl.effect$n, cntrl.effect$mn, cntrl.effect$sd,
+                 studlab = exp.effect$Tissue,
+                 sm = 'SMD', method.smd = 'Hedges',
+                 method.tau = 'REML')
+  
+  return(data.frame(tmp[c('TE.fixed', 'seTE.fixed', 'lower.fixed', 'upper.fixed', 'zval.fixed', 'pval.fixed',
+                   'TE.random', 'seTE.random', 'lower.random', 'upper.random', 'zval.random', 'pval.random',
+                   'Q', 'tau', 'H', 'I2')]))
+}, .parallel = TRUE, .paropts = list(.packages = c('meta', 'dplyr'))) %>%
+  dplyr::mutate(fdr.fixed = p.adjust(pval.fixed, method = 'fdr'),
+                fdr.random = p.adjust(pval.random, method = 'fdr'))
+p = list()
+p[[1]] = ggplot(meta.anlz.ad_cntrl.sex, aes(x = -log10(fdr.fixed), y = -log10(fdr.random)))
+p[[1]] = p[[1]] + geom_point() + facet_grid(.~Sex)
+p[[2]] = ggplot(meta.anlz.ad_cntrl.sex, aes(y = -log10(fdr.fixed), x = TE.fixed))
+p[[2]] = p[[2]] + geom_point() + geom_hline(yintercept = -log10(0.05), color = 'red') + facet_grid(.~Sex)
+p[[3]] = ggplot(meta.anlz.ad_cntrl.sex, aes(y = -log10(fdr.random), x = TE.random))
+p[[3]] = p[[3]] + geom_point() + geom_hline(yintercept = -log10(0.05), color = 'red') + facet_grid(.~Sex)
+#ggpubr::ggarrange(plotlist = p, ncol = 1, nrow = 3)
+# Get gene sets
+tmp = meta.anlz.ad_cntrl.sex %>%
+  dplyr::select(ensembl_gene_id, Sex, TE.fixed, TE.random, fdr.fixed, fdr.random) %>%
+  tidyr::gather(Feature, Value, -ensembl_gene_id, -Sex) %>%
+  tidyr::separate(Feature, c('Feature1', 'Model'), sep = '\\.') %>%
+  tidyr::spread(Feature1, Value) %>%
+  dplyr::filter(fdr <= 0.05, abs(TE) >= 0.2)
+tmp$Direction[tmp$TE <= 0] = 'DOWN'
+tmp$Direction[tmp$TE >= 0] = 'UP'
+gs = tmp %>%
+  plyr::dlply(.(Sex, Model, Direction), .fun = function(x){
+    unique(x$ensembl_gene_id)
+  })
+names(gs) = paste0('ad.control.', names(gs))
+all.gs = c(all.gs, gs)
+```
+
+#### Meta-analysis of APOE42-APOE40
+```{r apoe2.0}
+library(meta)
+
+# Mean and sd of gene expression in each Tissue x APOE4 category
+tissue.apoe4.summary = plyr::ddply(covar, .(Tissue, APOE4), .fun = function(x, y){
+  data.frame(ensembl_gene_id = y$ensembl_gene_id,
+             n = dim(x)[1],
+             mn = rowMeans(y[,x$SampleID], na.rm = T),
+             sd = apply(y[,x$SampleID], 1, sd, na.rm = T))
+}, expr)
+tissue.apoe4.summary$APOE4 <- as.factor(tissue.apoe4.summary$APOE4)
+
+# Perform meta-analysis for AD-CONTROL comparison (apoe4 2 vs 0)
+exp.effect = plyr::ddply(tissue.apoe4.summary, .(ensembl_gene_id), .fun = function(x){
+  exp.effect = dplyr::filter(x, APOE4 == '2')
+  rownames(exp.effect) = paste0( exp.effect$ensembl_gene_id , "_", exp.effect$Tissue)
+  return(EXP=exp.effect)
+})
+cntrl.effect = plyr::ddply(tissue.apoe4.summary, .(ensembl_gene_id), .fun = function(x){
+  cntrl.effect = dplyr::filter(x, APOE4 == '0')
+  rownames(cntrl.effect) = paste0( cntrl.effect$ensembl_gene_id , "_", cntrl.effect$Tissue )
+  return(CNTRL=cntrl.effect)
+}) 
+cntrl.effect = cntrl.effect[rownames(exp.effect), ]
+
+START <- seq.int(1, dim(exp.effect)[1], 6)
+END <- seq.int(6, dim(exp.effect)[1], 6)
+FOO<-as.data.frame(matrix(0, 0, 17))
+
+for( i in 1:length(START) ){ 
+  #This gene Doesn't Converge and Breaks the whole damn loop
+  if( i %in% c(225)){}
+  else{
+    tmp = metacont(exp.effect$n[ START[i]:END[i] ], exp.effect$mn[ START[i]:END[i] ], exp.effect$sd[ START[i]:END[i] ], 
+                 cntrl.effect$n[ START[i]:END[i] ], cntrl.effect$mn[ START[i]:END[i] ], cntrl.effect$sd[ START[i]:END[i] ],
+                 studlab = exp.effect$Tissue[ START[i]:END[i] ],
+                 sm = 'SMD', method.smd = 'Hedges',
+                 method.tau = 'REML')
+  
+    FOO <- rbind(FOO, data.frame(ensembl_gene_id=exp.effect$ensembl_gene_id[START[i]], tmp[c('TE.fixed', 'seTE.fixed', 'lower.fixed', 'upper.fixed', 'zval.fixed', 'pval.fixed',
+                   'TE.random', 'seTE.random', 'lower.random', 'upper.random', 'zval.random', 'pval.random',
+                   'Q', 'tau', 'H', 'I2')])[1,])
+  }
+} 
+
+meta.anlz.apoe4_2_0 <- as.data.frame(FOO) %>%
+  dplyr::mutate(fdr.fixed = p.adjust(pval.fixed, method = 'fdr'),
+                fdr.random = p.adjust(pval.random, method = 'fdr'))
+
+p = list()
+p[[1]] = ggplot(meta.anlz.apoe4_2_0, aes(x = -log10(fdr.fixed), y = -log10(fdr.random)))
+p[[1]] = p[[1]] + geom_point()
+p[[2]] = ggplot(meta.anlz.apoe4_2_0, aes(y = -log10(fdr.fixed), x = TE.fixed))
+p[[2]] = p[[2]] + geom_point() + geom_hline(yintercept = -log10(0.05), color = 'red')
+p[[3]] = ggplot(meta.anlz.apoe4_2_0, aes(y = -log10(fdr.random), x = TE.random))
+p[[3]] = p[[3]] + geom_point() + geom_hline(yintercept = -log10(0.05), color = 'red')
+#ggpubr::ggarrange(plotlist = p, ncol = 3, nrow = 1)
+# Get gene sets
+tmp = meta.anlz.apoe4_2_0 %>%
+  dplyr::select(ensembl_gene_id, TE.fixed, TE.random, fdr.fixed, fdr.random) %>%
+  tidyr::gather(Feature, Value, -ensembl_gene_id) %>%
+  tidyr::separate(Feature, c('Feature1', 'Model'), sep = '\\.') %>%
+  tidyr::spread(Feature1, Value) %>%
+  dplyr::filter(fdr <= 0.05, abs(TE) >= 0.2)
+tmp$Direction[tmp$TE <= 0] = 'DOWN'
+tmp$Direction[tmp$TE >= 0] = 'UP'
+gs = tmp %>%
+  plyr::dlply(.(Model, Direction), .fun = function(x){
+    unique(x$ensembl_gene_id)
+  })
+names(gs) = paste0('apoe4.2.0.', names(gs))
+all.gs = c(all.gs, gs)
+```
+
+## Store results in synapse
+```{r syn.store, cache = FALSE, eval=FALSE, include=FALSE}
+# Create folder to store results in synapse
+CODE <- syn_temp$store(synapseclient$Folder(name = "MetaAnalysis", parentId = parentId))
+Syns_Used <- c( 'syn8456631', 'syn8484996', 'syn8466814', 'syn21292041', 'syn21285564', 'syn21291908' )
+
+# Write results to files
+fwrite(meta.anlz.ad_cntrl, file = 'meta.anlz.ad_cntrl.tsv', sep = '\t', row.names = F, quote = F)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='meta.anlz.ad_cntrl.tsv', name = 'AD-Control meta-analysis across 6 brain regions hg38 Reprocessed Data', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+
+# Write results to files
+fwrite(meta.anlz.ad_cntrl.sex, file = 'meta.anlz.ad_cntrl.sex.tsv', sep = '\t', row.names = F, quote = F)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='meta.anlz.ad_cntrl.sex.tsv', name = 'AD-Control meta-analysis across 6 brain regions (sex specific) hg38 Reprocessed Data', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+
+# Write results to files
+fwrite(meta.anlz.apoe4_2_0, file = 'meta.anlz.apoe4_2_0.sex.tsv', sep = '\t', row.names = F, quote = F)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='meta.anlz.apoe4_2_0.sex.tsv', name = 'AD-Control meta-analysis across 6 brain regions (APOE4) hg38 Reprocessed Data', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+
+# Write results to files
+save(list = c('all.gs'), file = 'all.gensets.RData')
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='all.gensets.RData', name = 'All gene sets (in RData format) hg38 Reprocessed Data', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+```
+
+
+```{r knit2synapse, eval=FALSE}
+synapseclient <- reticulate::import("synapseclient")
+syn_temp <- synapseclient$Synapse()
+syn_temp$login()
+
+setwd("~/TWAS/code/")
+source("~/TWAS/utilityFunctions/knitfile2synapseClient.R")
+source("~/TWAS/utilityFunctions/hook_synapseMdSyntax_plot.R")
+
+createAndKnitToFolderEntityClient(file = "metaAnalysisForDiffExp_NoCBE.Rmd",
+                                 parentId = "syn18936948",
+                                 folderName = "MetaAnalysis_NoCBE")
+```
+
+## Source code
+[Source code in github](`r thisFile`)
