@@ -275,9 +275,9 @@ all.gs = c(all.gs, gs)
 ```
 
 ## Store results in synapse
-```{r syn.store, cache = FALSE, eval=FALSE, include=FALSE}
+```{r syn.store, cache = FALSE, eval=TRUE, include=FALSE}
 # Create folder to store results in synapse
-CODE <- syn_temp$store(synapseclient$Folder(name = "MetaAnalysis", parentId = parentId))
+CODE <- syn_temp$store(synapseclient$Folder(name = "MetaAnalysis_NoCBE", parentId = parentId))
 Syns_Used <- c( 'syn8456631', 'syn8484996', 'syn8466814', 'syn21292041', 'syn21285564', 'syn21291908' )
 
 # Write results to files
