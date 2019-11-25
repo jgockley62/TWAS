@@ -307,6 +307,14 @@ setwd("~/TWAS/code/")
 source("~/TWAS/utilityFunctions/knitfile2synapseClient.R")
 source("~/TWAS/utilityFunctions/hook_synapseMdSyntax_plot.R")
 
+parentId = 'syn18936948';
+activityName = 'Meta analysis of differential expression (No CBE)';
+activityDescription = 'Fixed and random effect meta-analysis of AMP-AD data (all 6 brain regions)';
+thisFileName <- 'metaAnalysisForDiffExp_NoCBE.Rmd'
+# Github link
+thisRepo <- getRepo(repository = "jgockley62/TWAS", ref="branch", refName='master')
+thisFile <- getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thisFileName))
+
 createAndKnitToFolderEntityClient(file = "metaAnalysisForDiffExp_NoCBE.Rmd",
                                  parentId = "syn18936948",
                                  folderName = "MetaAnalysis_NoCBE")
