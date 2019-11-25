@@ -127,7 +127,7 @@ p = list()
 p[[1]] = ggplot(meta.anlz.ad_cntrl, aes(x = -log10(fdr.fixed), y = -log10(fdr.random)))+geom_point()
 p[[2]] = ggplot(meta.anlz.ad_cntrl, aes(y = -log10(fdr.fixed), x = TE.fixed))+geom_point()+geom_hline(yintercept = -log10(0.05), color = 'red')
 p[[3]] = ggplot(meta.anlz.ad_cntrl, aes(y = -log10(fdr.random), x = TE.random))+geom_point()+geom_hline(yintercept = -log10(0.05), color = 'red')
-#ggpubr::ggarrange(plotlist = p, ncol = 3, nrow = 1)
+ggpubr::ggarrange(plotlist = p, ncol = 3, nrow = 1)
 # Get gene sets
 tmp = meta.anlz.ad_cntrl %>%
   dplyr::select(ensembl_gene_id, TE.fixed, TE.random, fdr.fixed, fdr.random) %>%
@@ -181,7 +181,7 @@ p[[2]] = ggplot(meta.anlz.ad_cntrl.sex, aes(y = -log10(fdr.fixed), x = TE.fixed)
 p[[2]] = p[[2]] + geom_point() + geom_hline(yintercept = -log10(0.05), color = 'red') + facet_grid(.~Sex)
 p[[3]] = ggplot(meta.anlz.ad_cntrl.sex, aes(y = -log10(fdr.random), x = TE.random))
 p[[3]] = p[[3]] + geom_point() + geom_hline(yintercept = -log10(0.05), color = 'red') + facet_grid(.~Sex)
-#ggpubr::ggarrange(plotlist = p, ncol = 1, nrow = 3)
+ggpubr::ggarrange(plotlist = p, ncol = 1, nrow = 3)
 # Get gene sets
 tmp = meta.anlz.ad_cntrl.sex %>%
   dplyr::select(ensembl_gene_id, Sex, TE.fixed, TE.random, fdr.fixed, fdr.random) %>%
@@ -256,7 +256,7 @@ p[[2]] = ggplot(meta.anlz.apoe4_2_0, aes(y = -log10(fdr.fixed), x = TE.fixed))
 p[[2]] = p[[2]] + geom_point() + geom_hline(yintercept = -log10(0.05), color = 'red')
 p[[3]] = ggplot(meta.anlz.apoe4_2_0, aes(y = -log10(fdr.random), x = TE.random))
 p[[3]] = p[[3]] + geom_point() + geom_hline(yintercept = -log10(0.05), color = 'red')
-#ggpubr::ggarrange(plotlist = p, ncol = 3, nrow = 1)
+ggpubr::ggarrange(plotlist = p, ncol = 3, nrow = 1)
 # Get gene sets
 tmp = meta.anlz.apoe4_2_0 %>%
   dplyr::select(ensembl_gene_id, TE.fixed, TE.random, fdr.fixed, fdr.random) %>%
