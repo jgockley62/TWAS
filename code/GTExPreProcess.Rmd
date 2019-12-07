@@ -15,28 +15,176 @@ Date of analysis update: "`r date()`"
 | syn20835007 | |
 | syn20834996 | |
 
+```{r libs, include=FALSE}
+knitr::opts_chunk$set(
+  echo=FALSE,
+  warning=FALSE,
+  message=FALSE,
+  error = FALSE,
+  tidy = FALSE,
+  cache = TRUE,
+  results='hide')
+#library(reticulate)
+```
+##Before running 
+Run the following in docker exec -it <CONTAINER> /bin/bash 
+chmod 777 /root/
+mv TWAS/ /home/<USR>/TWAS/
+chown -hR <GID>:<USR> /home/<USR>/TWAS/
+Create a ~/.synapseConfig file in the container, but do not push a container containing your credentials file to Docker Hub!!!
 
+## Login to Synapse Will need to replace with your credentials
+```{bash Login, echo=T, results='hide', eval=FALSE}
+#source /root/.bashrc
+synapse login -u <USR> -p <PSWD> --rememberMe
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+#Alternativly you can setup a credentials file as such:
+touch ~/.synapseConfig
+echo "[authentication]" >> ~/.synapseConfig
+echo "username = <USR>" >> ~/.synapseConfig
+echo "password = <PASWD>" >> ~/.synapseConfig
 ```
 
-## R Markdown
+```{bash PLINKSetup, results='hide', eval=F, echo=TRUE}
+mkdir ~/TWAS/bin
+wget -q -P ~/TWAS/bin http://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20190617.zip 
+unzip -d ~/TWAS/bin/ ~/TWAS/bin/plink_linux_x86_64_20190617.zip
+wget -q -P ~/TWAS/bin http://s3.amazonaws.com/plink2-assets/plink2_linux_x86_64_20191015.zip
+unzip -d ~/TWAS/bin/ ~/TWAS/bin/plink2_linux_x86_64_20191015.zip
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+rm ~/TWAS/bin/*.zip
+rm ~/TWAS/bin/toy.*
+rm ~/TWAS/bin/LICENSE
 ```
 
-## Including Plots
+## Pull GTEx Data From Synapse and Prep for Imputation
+```{bash Synapse, results='hide', echo=TRUE, cache=TRUE}
+synapse get syn21385083
+tar -xvf phg000219.v4.GTEx_Pilot_Imputation.genotype-imputed-data.c1.GRU.tar.gz
 
-You can also embed plots, for example:
+rm phg000219.v4.GTEx_Pilot_Imputation.genotype-imputed-data.c1.GRU.tar.gz
+cd phg000219.v4.GTEx_Pilot_Imputation.genotype-imputed-data.c1/
+#tar -xvf phased.vcf.tgz
+#tar -xvf info4.maf05.vcf.tgz
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+#Pull Data with needed SNPS only and fiter GTEx for that SNP List
+synapse get syn20835005
+synapse get syn20835007
+synapse get syn20834996
+
+~/TWAS/bin/plink --threads 10 --bfile All_CEU_ToTrainForTWAS --write-snplist
+
+tar -xvf all.SNPs.tgz
+touch merge.txt
+touch Log.txt
+for i in {22..1}
+  do
+    tar -xvf chr$i.all.tgz
+    
+    rm chr$i.dosage
+    rm chr$i.tped
+    rm data_imputed.chr$i.gen
+    rm data_imputed.chr$i.info
+    rm chr$i.info4.exclusion.snplist.txt
+    rm chr$i.info4.maf05.exclusion.snplist.txt
+    
+    vcftools --vcf chr$i.vcf --plink --out chr$i
+    
+    echo $(ls -ltr chr$i.vcf) >> Log.txt
+    rm chr$i.vcf
+    
+    ~/TWAS/bin/plink --threads 10 --file chr$i --extract plink.snplist -make-bed --out chr$i\_filt
+    rm chr$i.ped
+    rm chr$i.map
+    rm chr$i.log
+    
+    echo "chr"$i"_filt.bed chr"$i"_filt.bim chr"$i"_filt.fam" >> merge.txt
+  done
+grep -v 'chr1_filt.bed' merge.txt > foo.txt
+mv foo.txt merge.txt
+
+~/TWAS/bin/plink --threads 10 --bfile chr1_filt --merge-list merge.txt --make-bed --out GTEx_FiltSNP_Data
+rm merge.txt
+rm Log.txt 
+rm chr*_filt.*
+
+#Move files up to code directory and then clean up 
+mv GTEx_FiltSNP_Data.* ../
+mv All_CEU_ToTrainForTWAS.* ../
+mv plink.snplist ../SNPs_for_Impute.snplist
+cd ..
+
+rm -r phg000219.v4.GTEx_Pilot_Imputation.genotype-imputed-data.c1/
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+## Push Results to Synapse -- Contained in ProcessData.Rmd if needed for reference
+```{r synapse.parameters.head, include=FALSE, results='hide', echo=FALSE, cache=TRUE}
+parentId = 'syn18936948';
+activityName = 'Processed GTEx Genotypes TWAS';
+activityDescription = 'Proccessed and Filtered GTEx Genotype Data';
+thisFileName <- 'GTExPreProcess.Rmd'
+# Github link
+thisRepo <- githubr::getRepo(repository = "jgockley62/TWAS", ref="branch", refName='master')
+thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thisFileName))
+```
+
+```{r synapse.parameters, include=FALSE, results='hide', echo=FALSE, cache=TRUE}
+
+activityName = 'Processed GTEx Genotypes TWAS';
+activityDescription = 'Proccessed and Filtered GTEx Genotype Data';
+
+CODE <- syn_temp$store(synapseclient$Folder(name = "GTExGenotypes", parentId = parentId))
+
+#Set Used SynIDs For Provenance
+Syns_Used <- c("syn21385083", "syn20835005", "syn20835007", "syn20834996")
+ 
+# Set annotations
+Var.all.annotations = list(
+  dataType = 'Variant',
+  dataSubType = 'SNP',
+  summaryLevel = 'Nucleotide',
+  assay  = 'Genotype Array',
+  tissueTypeAbrv  = c('Mixed Tissues'), 
+  study = 'GTEx', 
+  organism = 'HomoSapiens',
+  consortium  = 'GTEx',
+  genomeAssemblyID = 'GRCh37'
+)
+
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='GTEx_FiltSNP_Data.fam', name = 'Filtered GTEx Genotype FAM file for TWAS Imputation', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+syn_temp$setAnnotations(ENRICH_OBJ, annotations = Var.all.annotations)
+
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='GTEx_FiltSNP_Data.bim', name = 'Filtered GTEx Genotype BIM file for TWAS Imputation', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+syn_temp$setAnnotations(ENRICH_OBJ, annotations = Var.all.annotations)
+
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='GTEx_FiltSNP_Data.bed', name = 'Filtered GTEx Genotype BED file for TWAS Imputation', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+syn_temp$setAnnotations(ENRICH_OBJ, annotations = Var.all.annotations)
+
+```
+
+```{bash CleanClean, results='hide', echo=TRUE, cache=TRUE}
+rm *.bed
+rm *.fam
+rm *.bim
+rm *.nosex
+rm *.log
+rm *.snplist
+```
+
+### R Source Code
+[Github](`r thisFile`)
+
+```{r knitmd, eval=FALSE, cache=FALSE, include=FALSE}
+synapseclient <- reticulate::import("synapseclient")
+syn_temp <- synapseclient$Synapse()
+syn_temp$login()
+
+setwd("~/TWAS/code/")
+source("~/TWAS/utilityFunctions/knitfile2synapseClient.R")
+source("~/TWAS/utilityFunctions/hook_synapseMdSyntax_plot.R")
+
+createAndKnitToFolderEntityClient(file = "GTExPreProcess.Rmd",
+                                          parentId ="syn18936948",
+                                          folderName = 'GTExPreProcess')
+
+```
