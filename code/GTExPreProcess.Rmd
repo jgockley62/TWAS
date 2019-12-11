@@ -24,7 +24,11 @@ knitr::opts_chunk$set(
   tidy = FALSE,
   cache = TRUE,
   results='hide')
-#library(reticulate)
+library(reticulate)
+#BiocManager::install("Rgraphviz")
+#BiocManager::install("graph")
+#install.packages('CePa')
+#BiocManager::install("phantasus")
 ```
 ##Before running 
 Run the following in docker exec -it <CONTAINER> /bin/bash 
@@ -72,7 +76,7 @@ synapse get syn20835005
 synapse get syn20835007
 synapse get syn20834996
 
-~/TWAS/bin/plink --threads 10 --bfile All_CEU_ToTrainForTWAS --write-snplist
+~/TWAS/bin/plink --threads 12 --bfile All_CEU_ToTrainForTWAS --write-snplist
 
 tar -xvf all.SNPs.tgz
 touch merge.txt
@@ -93,7 +97,7 @@ for i in {22..1}
     echo $(ls -ltr chr$i.vcf) >> Log.txt
     rm chr$i.vcf
     
-    ~/TWAS/bin/plink --threads 10 --file chr$i --extract plink.snplist -make-bed --out chr$i\_filt
+    ~/TWAS/bin/plink --threads 12 --file chr$i --extract plink.snplist -make-bed --out chr$i\_filt
     rm chr$i.ped
     rm chr$i.map
     rm chr$i.log
@@ -103,7 +107,8 @@ for i in {22..1}
 grep -v 'chr1_filt.bed' merge.txt > foo.txt
 mv foo.txt merge.txt
 
-~/TWAS/bin/plink --threads 10 --bfile chr1_filt --merge-list merge.txt --make-bed --out GTEx_FiltSNP_Data
+
+~/TWAS/bin/plink --threads 12 --bfile chr1_filt --merge-list merge.txt --make-bed --out GTEx_FiltSNP_Data
 rm merge.txt
 rm Log.txt 
 rm chr*_filt.*
@@ -115,6 +120,162 @@ mv plink.snplist ../SNPs_for_Impute.snplist
 cd ..
 
 rm -r phg000219.v4.GTEx_Pilot_Imputation.genotype-imputed-data.c1/
+```
+
+## Pull GTEx WGS Data From Synapse and Prep for Imputation
+This will need a bunch of space!
+```{bash Pull_WGS, results='hide', echo=TRUE, cache=TRUE}
+synapse get syn21417881
+gunzip GTEx_Analysis_2016-01-15_v7_WholeGenomeSeq_635Ind_PASS_AB02_GQ20_HETX_MISS15_PLINKQC.vcf.gz
+
+synapse get syn20835007
+
+awk '{ print $1"\t"$4 }' All_CEU_ToTrainForTWAS.bim > Positions.txt
+
+vcftools --gzvcf GTEx_Analysis_2016-01-15_v7_WholeGenomeSeq_635Ind_PASS_AB02_GQ20_HETX_MISS15_PLINKQC.vcf.gz --positions Positions.txt --plink --out Init_Filtered
+
+~/TWAS/bin/plink --threads 12 --file Init_Filtered --make-bed --out temp
+
+```
+
+### ReName the MSBB SNPS so the can be combined
+```{python ReNamer_ONE, echo=F, results='hide'}
+import sys
+import os
+import re
+
+InFile = 'All_CEU_ToTrainForTWAS.bim'
+InFileb = 'temp.bim' #LDREF_FiltSNPs.bim
+
+RS_IDs = {}
+RS_Pos = {}
+
+F1 = open(InFile)
+for line in F1:
+	LINE = line.rstrip('\r\n')
+	lst = LINE.split('\t')
+	RS_IDs[ ''.join([lst[0], '_', lst[3], ':', lst[4], '-', lst[5]] ) ] = lst[1]
+	RS_IDs[ ''.join([lst[0], '_', lst[3], ':', lst[5], '-', lst[4]] ) ] = lst[1]
+	#RS_IDs[ ''.join([lst[0], '_', lst[3]] ) ] = lst[1]
+	#RS_Pos[ ''.join([lst[0], '_', lst[3], ':', lst[4], '-', lst[5]] ) ] = lst[2]
+F1.close()
+
+
+#Open Output
+OUT = open( ''.join([ InFileb.replace(".bim", ""), 'Renamed.bim']), 'w' )
+#OUT2 = open( ''.join([ InFileb.replace(".bim", ""), 'WTF.bim']), 'w' )
+F1 = open(InFileb)
+for line in F1:
+	LINE = line.rstrip('\r\n')
+	lst = LINE.split('\t')
+	foo = ''.join([lst[0], '_', lst[3], ':', lst[5], '-', lst[4]] )
+	#foo = ''.join([lst[0], '_', lst[3] ] ) 
+	if foo in RS_IDs:
+	  Name = RS_IDs[  ''.join([lst[0], '_', lst[3], ':', lst[4], '-', lst[5] ] ) ]
+	  #Name = RS_IDs[  ''.join([lst[0], '_', lst[3] ] ) ]
+	  Entry = '\t'.join([ lst[0], Name, lst[2], lst[3], lst[4], lst[5] ])
+	  print >>OUT, Entry
+	else:
+	  print >>OUT, Entry
+
+
+F1.close()
+OUT.close()
+#OUT2.close()
+```
+
+```{bash FinalizeGenoType, results='hide', echo=TRUE, cache=TRUE}
+mv tempRenamed.bim temp.bim
+
+#Remove all Repeated SNPs 9I have no Idea how imputation will handle them
+~/TWAS/bin/plink --threads 12 --bfile All_CEU_ToTrainForTWAS --write-snplist
+~/TWAS/bin/plink --threads 12 --bfile temp --extract plink.snplist --list-duplicate-vars --make-bed --out Test
+~/TWAS/bin/plink --threads 12 --bfile Test --list-duplicate-vars suppress-first --out Duplicates
+~/TWAS/bin/plink --threads 12 --bfile Test --exclude Duplicates.dupvar --make-bed --out UniqueGTEx_GWAS_ForImpute 
+
+rm Test*
+rm *.snplist
+rm temp.*
+rm Init_Filtered.*
+rm Duplicates.*
+rm positions.txt
+
+## Pull MetaData & Expression
+#_# wget https://storage.googleapis.com/gtex_analysis_v8/multi_tissue_eqtl_data/GTEx_Analysis_v8.metasoft.txt.gz
+#_# gunzip GTEx_Analysis_v8.metasoft.txt.gz
+
+wget https://storage.googleapis.com/gtex_analysis_v8/annotations/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt
+
+wget https://storage.googleapis.com/gtex_analysis_v8/rna_seq_data/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_tpm.gct.gz
+gunzip GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_tpm.gct.gz
+```
+
+```{r GTExPheno, cache=FALSE, echo=FALSE}
+#ID Brain INDV
+Meta <- as.data.frame( data.table::fread(file='GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt', header=T) )
+table(Meta$SMTS)
+
+TissueTypes <- names( table(Meta[ Meta$SMTS == 'Brain', ]$SMTSD) )
+TissueTypes <- TissueTypes[ grepl( "Cerebell", TissueTypes ) == F ]
+
+BrainMeta <- Meta[ Meta$SMTSD %in% TissueTypes, ]
+IDs <- BrainMeta$SAMPID
+
+GTEX_IDs <- paste0( do.call( rbind, strsplit( IDs,'-' ))[,1], '-', do.call( rbind, strsplit( IDs,'-' ))[,2] )
+uGTEX_IDs <-GTEX_IDs[ !duplicated(GTEX_IDs) ]
+
+FAM <- as.data.frame( data.table::fread(file='UniqueGTEx_GWAS_ForImpute.fam', header=F) )
+row.names(FAM) <- FAM$V1
+
+BRAIN_INDV <- FAM[ (FAM$V1 %in% uGTEX_IDs) == T, 1:2 ]
+write.table( BRAIN_INDV, file = "GTEX_Plink_Indvs.txt", row.names = F, col.names = F, sep='\t', quote=F)
+
+####################################################################################################
+#Get Expression
+EXP <- phantasus::read.gct('GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_tpm.gct')
+
+exp <- EXP@assayData$exprs
+bMeta <- Meta[ Meta$SAMPID %in% IDs, ]
+bexp <- exp[ , (colnames(exp) %in% IDs) ==T ] 
+row.names( bMeta ) <- bMeta$SAMPID
+bMeta <- bMeta[ colnames(bexp), ]
+
+#Filter for relevant genes
+row.names(bexp) <- do.call( rbind, strsplit(row.names(bexp), '\\.'))[,1]
+Genes <- as.character(as.data.frame(data.table::fread( syn_temp$get('syn21011180')$path, header = T))[,1])
+bexp <- bexp[ Genes[ Genes %in% row.names(bexp) ], ]
+
+#Scale the values
+ScalerTable <- table( bMeta$SAMPID, bMeta$SMTSD)
+ScalerTable <- as.data.frame(ScalerTable)
+
+Scaled_bexp <- as.data.frame( matrix(0,dim(bexp)[1],0) )
+row.names( Scaled_bexp ) <- row.names(bexp)
+
+Scaled_bexp_Log2 <- as.data.frame( matrix(0,dim(bexp)[1],0) )
+row.names( Scaled_bexp_Log2 ) <- row.names(bexp)
+
+for( Type in names(table(ScalerTable$Var2)) ){
+  #print(head( bexp[ ,as.character(ScalerTable[ ScalerTable$Var2 == Type & ScalerTable$Freq == 1,  ]$Var1) ][,1:5]))
+  Scal <- t(scale(t(bexp[ ,as.character(ScalerTable[ ScalerTable$Var2 == Type & ScalerTable$Freq == 1,  ]$Var1)] ))) 
+  Scaled_bexp <- cbind(Scaled_bexp, Scal)
+  
+  Scal_log <- t(scale(t(log2(bexp[ ,as.character(ScalerTable[ ScalerTable$Var2 == Type & ScalerTable$Freq == 1,  ]$Var1) ]+1)))) 
+  Scaled_bexp_Log2 <- cbind(Scaled_bexp_Log2, Scal_log)
+}
+
+hist(as.numeric(Scaled_bexp['ENSG00000225630',]), breaks =80)
+hist(as.numeric(Scaled_bexp_Log2['ENSG00000225630',]), breaks =80)
+
+
+write.table(Scaled_bexp, file = "Init_GETx_Scaled_Expression.tsv", sep="\t", row.names = T, col.names = T, quote = F)
+write.table(Scaled_bexp_Log2, file = "Init_GETx_ScaledLog2Plus1_Expression.tsv", sep="\t", row.names = T, col.names = T, quote = F)
+
+bMeta$PTID <- paste0( do.call( rbind, strsplit( colnames(Scaled_bexp), '-'))[,1], '-', do.call( rbind, strsplit( colnames(Scaled_bexp), '-'))[,2] )
+write.table(bMeta, file = "GETx_BrainMeta.tsv", sep="\t", row.names = T, col.names = T, quote = F)
+
+table(FAM$V1 %in% bMeta$PTID)
+
 ```
 
 ## Push Results to Synapse -- Contained in ProcessData.Rmd if needed for reference
@@ -134,6 +295,7 @@ activityName = 'Processed GTEx Genotypes TWAS';
 activityDescription = 'Proccessed and Filtered GTEx Genotype Data';
 
 CODE <- syn_temp$store(synapseclient$Folder(name = "GTExGenotypes", parentId = parentId))
+CODEalt <- syn_temp$store(synapseclient$Folder(name = "GTExPreProcess", parentId = parentId))
 
 #Set Used SynIDs For Provenance
 Syns_Used <- c("syn21385083", "syn20835005", "syn20835007", "syn20834996")
@@ -151,6 +313,30 @@ Var.all.annotations = list(
   genomeAssemblyID = 'GRCh37'
 )
 
+# Set annotations
+EXP.all.annotations = list(
+  dataType = 'mRNA',
+  dataSubType = 'geneExp',
+  summaryLevel = 'gene',
+  assay  = 'RNAseq',
+  tissueTypeAbrv  = c(gsub( 'Brain - ', "", names(table(bMeta$SMTSD)))), 
+  study = 'GTEx', 
+  organism = 'HomoSapiens',
+  consortium  = 'GTEx',
+  normalizationStatus = TRUE,
+  normalizationType = 'Scaled TPM',
+  rnaquantification = 'UNK',
+  genomeAssemblyID = 'GRCh38'
+)
+
+Basic.annotations = list(
+  dataType = 'MetaData',
+  dataSubType = 'GTEx Sample Meta Data',
+  study = 'GTEx', 
+  organism = 'HomoSapiens',
+  consortium  = 'GTEx'
+)
+
 ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='GTEx_FiltSNP_Data.fam', name = 'Filtered GTEx Genotype FAM file for TWAS Imputation', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
 syn_temp$setAnnotations(ENRICH_OBJ, annotations = Var.all.annotations)
 
@@ -160,7 +346,27 @@ syn_temp$setAnnotations(ENRICH_OBJ, annotations = Var.all.annotations)
 ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='GTEx_FiltSNP_Data.bed', name = 'Filtered GTEx Genotype BED file for TWAS Imputation', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
 syn_temp$setAnnotations(ENRICH_OBJ, annotations = Var.all.annotations)
 
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='UniqueGTEx_GWAS_ForImpute.fam', name = 'Filtered GTEx Genotype FAM file from GWAS Data for TWAS Imputation', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+syn_temp$setAnnotations(ENRICH_OBJ, annotations = Var.all.annotations)
+
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='UniqueGTEx_GWAS_ForImpute.bed', name = 'Filtered GTEx Genotype BIM file from GWAS Data for TWAS Imputation', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+syn_temp$setAnnotations(ENRICH_OBJ, annotations = Var.all.annotations)
+
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='UniqueGTEx_GWAS_ForImpute.bim', name = 'Filtered GTEx Genotype BED file from GWAS Data for TWAS Imputation', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+syn_temp$setAnnotations(ENRICH_OBJ, annotations = Var.all.annotations)
+
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='Init_GETx_Scaled_Expression.tsv', name = 'TPM GTEx Brain Expression for all Profiles Z-Scaled within Tissue', parentId=CODEalt$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+syn_temp$setAnnotations(ENRICH_OBJ, annotations = EXP.all.annotations)
+
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='Init_GETx_ScaledLog2Plus1_Expression.tsv', name = 'Log2 TPM+1 GTEx Brain Expression for all Profiles Z-Scaled within Tissue', parentId=CODEalt$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+syn_temp$setAnnotations(ENRICH_OBJ, annotations = EXP.all.annotations)
+
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='GETx_BrainMeta.tsv', name = 'Brain Sample Meta Data', parentId=CODEalt$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+syn_temp$setAnnotations(ENRICH_OBJ, annotations = Basic.annotations)
+
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='GTEX_Plink_Indvs.txt', name = 'Genotype IIDs with a BrainExpression Profile', parentId=CODEalt$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
 ```
+
 
 ```{bash CleanClean, results='hide', echo=TRUE, cache=TRUE}
 rm *.bed
@@ -169,6 +375,10 @@ rm *.bim
 rm *.nosex
 rm *.log
 rm *.snplist
+rm *.tsv
+rm *.txt
+rm *.gct
+rm *.gz
 ```
 
 ### R Source Code
