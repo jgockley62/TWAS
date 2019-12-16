@@ -112,8 +112,85 @@ rm ~/TWAS/bin/LICENSE
 ```
 
 ## Pull CMC Data From Synapse and Prep for Imputation - 
-This data is protected
+This data is protected, you wil be required to apply for access through PhsycEncode
+```{bash Pull_WGS, results='hide', echo=TRUE, cache=TRUE}
+CORES=`expr $(nproc) - 2`
+#Pull Data with needed SNPS only and fiter GTEx for that SNP List
+synapse get syn20835005
+synapse get syn20835007
+synapse get syn20834996
+~/TWAS/bin/plink --threads $CORES --bfile All_CEU_ToTrainForTWAS --write-snplist
 
+mkdir CMC_Genos
+synapse get syn10537112 --recursive --downloadLocation CMC_Genos/
+
+mkdir CMC_Filt_Genos
+touch merge.txt
+#Pull out Snps
+for i in {1..22}
+  do
+    #--positions plink.snplist 
+    bcftools norm --threads $CORES --rm-dup snps -Oz CMC_Genos/CMC_chr$i.dose.vcf.gz > CMC_Filt_Genos/Filt_CMC_chr$i.dose.vcf.gz
+    vcftools --gzvcf CMC_Filt_Genos/Filt_CMC_chr$i.dose.vcf.gz --plink --out CMC_Filt_Genos/Init_Filtered_chr$i
+    echo 'CMC_Filt_Genos/Init_Filtered_chr'$i'.ped CMC_Filt_Genos/Init_Filtered_chr'$i'.map' >> merge.txt
+  done
+grep -v 'chr1.ped' merge.txt > foo
+mv foo merge.txt
+
+#Merge Genotype
+~/TWAS/bin/plink --threads $CORES --file CMC_Filt_Genos/Init_Filtered_chr1 --merge-list merge.txt --make-bed --out Merged_Initial_CMC_Geno
+
+#Remove old Map/Ped Files
+rm CMC_Filt_Genos/Init_Filtered_chr*.map
+rm CMC_Filt_Genos/Init_Filtered_chr*.ped
+```
+
+### ReName the MSBB SNPS so the can be combined
+```{python ReNamer_ONE, echo=F, results='hide',python.reticulate=T}
+import sys
+import os
+import re
+
+InFile = 'All_CEU_ToTrainForTWAS.bim'
+InFileb = 'Merged_Initial_CMC_Geno.bim' #LDREF_FiltSNPs.bim
+
+RS_IDs = {}
+RS_Pos = {}
+
+F1 = open(InFile)
+for line in F1:
+	LINE = line.rstrip('\r\n')
+	lst = LINE.split('\t')
+	RS_IDs[ ''.join([lst[0], '_', lst[3]]) ] = lst[1]
+	RS_Pos[ ''.join([lst[0], '_', lst[3]]) ] = lst[2]
+F1.close()
+
+#Open Output
+OUT = open( ''.join([ InFileb.replace(".bim", ""), 'Renamed.bim']), 'w' )
+
+F1 = open(InFileb)
+for line in F1:
+	LINE = line.rstrip('\r\n')
+	lst = LINE.split('\t')
+	if( ''.join([ lst[0], "_", lst[3] ]) in RS_IDs):
+		Name = RS_IDs[ ''.join([ lst[0], "_", lst[3] ])]
+		Entry = '\t'.join([ lst[0], Name, lst[2], lst[3], lst[4], lst[5] ])
+		print >>OUT, Entry
+	else:
+		print >>OUT, LINE
+
+F1.close()
+OUT.close()
+```
+
+## Pull Imputation SNPS - 
+```{bash Pull_impute, results='hide', echo=TRUE, cache=TRUE}
+CORES=`expr $(nproc) - 2`
+
+mv Merged_Initial_CMC_GenoRenamed.bim Merged_Initial_CMC_Geno.bim
+~/TWAS/bin/plink --threads $CORES --bfile Merged_Initial_CMC_Geno --extract plink.snplist --make-bed --out CMC_Genos_For_Impute
+
+```
 
 ```{r synapse.parameters.head, include=FALSE, results='hide', echo=FALSE, cache=TRUE}
 parentId = 'syn18936948';
@@ -127,11 +204,11 @@ thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('c
 
 ```{r synapse.parameters, include=FALSE, results='hide', echo=FALSE, cache=TRUE}
 
-activityName = 'Processed GTEx Genotypes TWAS';
-activityDescription = 'Proccessed and Filtered GTEx Genotype Data';
+activityName = 'Processed CMC Genotypes TWAS';
+activityDescription = 'Proccessed and Filtered CMC Genotype Data';
 
-CODE <- syn_temp$store(synapseclient$Folder(name = "GTExGenotypes", parentId = parentId))
-CODEalt <- syn_temp$store(synapseclient$Folder(name = "GTExPreProcess", parentId = parentId))
+CODE <- syn_temp$store(synapseclient$Folder(name = "CMC_FilteredGenotypes", parentId = parentId))
+#CODEalt <- syn_temp$store(synapseclient$Folder(name = "CMC_FilteredGenotypes", parentId = parentId))
 
 #Set Used SynIDs For Provenance
 Syns_Used <- c("syn21385083", "syn20835005", "syn20835007", "syn20834996", "syn10887100", "syn10887068", "syn10887117", "syn10887048", "syn10887106", "syn10887111", "syn10887027", "syn10887033", "syn10887101", "syn10887029", "syn10887044", "syn11273049", "syn10887084", "syn10887091", "syn10887078", "syn10887115", "syn10887041", "syn10887071", "syn10887037", "syn10887103", "syn10887102", "syn10887030", "syn11273048", "syn10887059", "syn10887040", "syn10887057", "syn10887065", "syn10887055", "syn10887119", "syn10887073", "syn10887050", "syn10887014", "syn10887021", "syn10887062", "syn10887107", "syn10887096", "syn11273047", "syn10887049", "syn10887058", "syn10887020", "syn10887031", "syn10887108", "syn10887056", "syn11273044", "syn10887032", "syn10887094", "syn10887069", "syn10887077", "syn10887019", "syn10887104"
@@ -174,8 +251,32 @@ Basic.annotations = list(
   consortium  = 'CMC'
 )
 
-ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='REPLACE TEST VALUE', name = 'REPLACE TEST VALUE', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='CMC_Genos_For_Impute.bim', name = 'CMC Genotypes For Imputing exp BIM', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
 syn_temp$setAnnotations(ENRICH_OBJ, annotations = Var.all.annotations)
+
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='CMC_Genos_For_Impute.fam', name = 'CMC Genotypes For Imputing exp FAM', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+syn_temp$setAnnotations(ENRICH_OBJ, annotations = Var.all.annotations)
+
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='CMC_Genos_For_Impute.bed', name = 'CMC Genotypes For Imputing exp BED ', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+syn_temp$setAnnotations(ENRICH_OBJ, annotations = Var.all.annotations)
+```
+
+## Clean
+
+```{bash Pull_WGS, results='hide', echo=TRUE, cache=TRUE}
+rm *.fam
+rm *.bed
+rm *.bim
+rm *.fam
+rm *.nosex
+rm *.ped
+rm *.map
+rm *.missnp
+rm *.log
+rm *.snplist
+rm merge.txt
+rm -r CMC_Genos/
+rm -r CMC_Filt_Genos/
 ```
 
 ### R Source Code
