@@ -196,7 +196,7 @@ mv Merged_Initial_CMC_GenoRenamed.bim Merged_Initial_CMC_Geno.bim
 parentId = 'syn18936948';
 activityName = 'Processed CMC Genotypes TWAS';
 activityDescription = 'Proccessed and Filtered CMC Genotype Data';
-thisFileName <- 'CMC_DataCProcessing.Rmd'
+thisFileName <- 'CMC_DataProcessing.Rmd'
 # Github link
 thisRepo <- githubr::getRepo(repository = "jgockley62/TWAS", ref="branch", refName='master')
 thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thisFileName))
@@ -233,7 +233,7 @@ EXP.all.annotations = list(
   dataSubType = 'geneExp',
   summaryLevel = 'gene',
   assay  = 'RNAseq',
-  tissueTypeAbrv  = c(gsub( 'Brain - ', "", names(table(bMeta$SMTSD)))), 
+  tissueTypeAbrv  = c('Multiple Brain'), 
   study = 'CMC', 
   organism = 'HomoSapiens',
   consortium  = 'CMC',
@@ -263,7 +263,7 @@ syn_temp$setAnnotations(ENRICH_OBJ, annotations = Var.all.annotations)
 
 ## Clean
 
-```{bash Pull_WGS, results='hide', echo=TRUE, cache=TRUE}
+```{bash cleanup, results='hide', echo=TRUE, cache=TRUE}
 rm *.fam
 rm *.bed
 rm *.bim
