@@ -170,8 +170,51 @@ qq(Assoc$TWAS.P, bty='n', las=1)
 dev.off()
 ```
 
-```{r PushToSynapse,include=FALSE}
 
+```{r synapse.parameters, include=FALSE, cache=TRUE}
+parentId = 'syn18936948';
+activityName = 'TWAS Results';
+activityDescription = 'Results Plots from TWAS Analysis';
+thisFileName <- 'ResultsPlots.Rmd'
+# Github link
+thisRepo <- githubr::getRepo(repository = "jgockley62/TWAS", ref="branch", refName='master')
+thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thisFileName))
+```
+
+### Store files in synapse
+```{r synapse.store, include=FALSE, eval=TRUE, cache=FALSE}
+activityName = 'TWAS Results';
+activityDescription = 'Results Plots from TWAS Analysis';
+CODE <- syn_temp$store(synapseclient$Folder(name = "TWAS Results Figures", parentId = parentId))
+
+#Set Used SynIDs For Provenance
+#Syns_Used <- c("")
+
+# Set annotations
+all.annotations = list(
+  dataType = 'pdf',
+  dataSubType = 'geneExp',
+  summaryLevel = 'gene',
+  assay	 = 'TWAS',
+  study = 'TWAS', 
+  organism = 'HomoSapiens',
+  consortium	= c( 'ROSMAP', 'MSBB','Mayo' ),
+  normalizationStatus	= TRUE,
+  normalizationType	= 'CQN',
+  genomeAssemblyID = 'GRCh37'
+)
+
+#TODO add provenance used = Syns_Used,
+
+# Store SVA results
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='TWAS_Manhattan.pdf', name = 'Twas Gene Association Manhattan Plot', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$dataSubType = 'Manhattan Plot'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
+  
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='TWAS_qq.pdf', name = 'Twas Gene Association QQ-Plot', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$dataSubType = 'QQ-Plot'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
+  
 ```
 
 ```{r knitmd, eval=FALSE, cache=FALSE, include=FALSE}
