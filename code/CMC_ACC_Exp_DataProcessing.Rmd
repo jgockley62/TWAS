@@ -255,9 +255,9 @@ draw(COVARIATES.CORRELATION$plot, heatmap_legend_side = 'left', padding  = unit(
 ### Explore metadata
 ```{r data.explore, cache=FALSE, fig.width = 12, fig.height = 8}
 
-METADATA <- METADATA[ METADATA$Tissue == 'DLPFC', ]
+METADATA <- METADATA[ METADATA$Tissue == 'ACC', ]
 counts <- counts[ , METADATA$SampleID]
-COVARIATES=COVARIATES[ COVARIATES$Tissue == 'DLPFC' ,]
+COVARIATES=COVARIATES[ COVARIATES$Tissue == 'ACC' ,]
 my.theme = theme(legend.position = 'top', axis.text.x = element_text(angle = 90, hjust = 1))
 # RIN
 p = list()
@@ -791,9 +791,9 @@ RESIDUAL.SVA.GENE_EXPRESSION = RESIDUAL.SVA.GENE_EXPRESSION +
 
 
 ```{r synapse.parameters, include=FALSE, cache=TRUE}
-parentId = 'syn21442618';
+parentId = 'syn21478397';
 activityName = 'Covariate and Diagnosis Regression';
-activityDescription = 'CMCCovariate analysis and Regrsison of AD Diagnosis of aligned effective counts with GRCh38 with CQN normalisation (DLPFC)';
+activityDescription = 'CMCCovariate analysis and Regrsison of AD Diagnosis of aligned effective counts with GRCh38 with CQN normalisation (ACC)';
 thisFileName <- 'CMC_DataProcessing.Rmd'
 # Github link
 thisRepo <- githubr::getRepo(repository = "jgockley62/TWAS", ref="branch", refName='master')
@@ -804,9 +804,10 @@ thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('c
 ```{r synapse.store, include=FALSE, eval=TRUE, cache=FALSE}
 activityName = 'CMC Covariate and Diagnosis Regression';
 activityDescription = 'CMC Covariate analysis and Regrssion of Diagnosis of aligned effective counts with GRCh38 with CQN normalisation CMC';
-CODE <- syn_temp$store(synapseclient$Folder(name = "Iterative_DLPFC_Normalization", parentId = parentId))
+CODE <- syn_temp$store(synapseclient$Folder(name = "Iterative_ACC_Normalization", parentId = parentId))
+
 #Set Used SynIDs For Provenance
-Syns_Used <- c("")
+#Syns_Used <- c("")
 
 # Set annotations
 all.annotations = list(
@@ -814,7 +815,7 @@ all.annotations = list(
   dataSubType = 'geneExp',
   summaryLevel = 'gene',
   assay	 = 'RNAseq',
-  tissueTypeAbrv	= c('DLPFC'), 
+  tissueTypeAbrv	= c('ACC'), 
   study = 'CMC', 
   organism = 'HomoSapiens',
   consortium	= 'CMC',
@@ -823,7 +824,6 @@ all.annotations = list(
   rnaquantification = 'RSEM',
   genomeAssemblyID = 'GRCh38'
 )
-
 
 #TODO add provenance used = Syns_Used,
 
@@ -854,7 +854,7 @@ syn_temp$login()
 setwd("~/TWAS/code/")
 source("~/TWAS/utilityFunctions/knitfile2synapseClient.R")
 source("~/TWAS/utilityFunctions/hook_synapseMdSyntax_plot.R")
-createAndKnitToFolderEntityClient(file = "CMC_Exp_DataProcessing.Rmd",
-                                          parentId ="syn21470292",
-                                          folderName = 'DLFPC')
+createAndKnitToFolderEntityClient(file = "CMC_ACC_Exp_DataProcessing",
+                                          parentId ="syn21478397",
+                                          folderName = 'ACC')
 ```

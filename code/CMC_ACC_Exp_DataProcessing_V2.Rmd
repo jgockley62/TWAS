@@ -30,7 +30,7 @@ library(sva)
 #library(reticulate)
 library(R.utils)
 
-cl = makeCluster(14)
+cl = makeCluster(detectCores()-2)
 registerDoParallel(cl)
 options(xtable.type="html")
 # Source modified utility functions from limma and sva package
@@ -49,12 +49,15 @@ knitr::opts_chunk$set(
 ### Problem Genes in the iterative normalization:
 ```{r prob.genes, cache=TRUE, include=FALSE}
 
-ProbGenes <- c('ENSG00000227232', 'ENSG00000248527', 'ENSG00000285812', 'ENSG00000272455', 'ENSG00000215915', 'ENSG00000269737', 'ENSG00000157911', 'ENSG00000226029', 'ENSG00000121775', 'ENSG00000225828', 'ENSG00000116525', 'ENSG00000197982', 'ENSG00000285728', 'ENSG00000225767', 'ENSG00000229359', 'ENSG00000270629', 'ENSG00000160679', 'ENSG00000177954', 'ENSG00000227741', 'ENSG00000143257', 'ENSG00000236535', 'ENSG00000118194', 'ENSG00000143862', 'ENSG00000240219', 'ENSG00000123838', 'ENSG00000272645', 'ENSG00000143643', 'ENSG00000223694', 'ENSG00000272865', 'ENSG00000286216', 'ENSG00000179270', 'ENSG00000235760', 'ENSG00000144031', 'ENSG00000115282', 'ENSG00000232931', 'ENSG00000236440', 'ENSG00000227331', 'ENSG00000272211', 'ENSG00000229056', 'ENSG00000144410', 'ENSG00000144452', 'ENSG00000152056', 'ENSG00000183977', 'ENSG00000230409', 'ENSG00000172940', 'ENSG00000232354', 'ENSG00000281691', 'ENSG00000162267', 'ENSG00000189283', 'ENSG00000239926', 'ENSG00000239997', 'ENSG00000279349', 'ENSG00000285943', 'ENSG00000241278', 'ENSG00000240695', 'ENSG00000114113', 'ENSG00000240875', 'ENSG00000206120', 'ENSG00000229638', 'ENSG00000225473', 'ENSG00000230732', 'ENSG00000242686', 'ENSG00000249592', 'ENSG00000013810', 'ENSG00000284727', 'ENSG00000249212', 'ENSG00000251022', 'ENSG00000250361', 'ENSG00000250910', 'ENSG00000164105', 'ENSG00000283355', 'ENSG00000261360', 'ENSG00000274441', 'ENSG00000152669', 'ENSG00000205571', 'ENSG00000251634', 'ENSG00000171530', 'ENSG00000061455', 'ENSG00000164406', 'ENSG00000285605', 'ENSG00000241112', 'ENSG00000285868', 'ENSG00000241956', 'ENSG00000124588', 'ENSG00000189134', 'ENSG00000206341', 'ENSG00000204227', 'ENSG00000156639', 'ENSG00000272137', 'ENSG00000146242', 'ENSG00000255330', 'ENSG00000118514', 'ENSG00000146576', 'ENSG00000235859', 'ENSG00000183696', 'ENSG00000228735', 'ENSG00000234500', 'ENSG00000274080', 'ENSG00000205485', 'ENSG00000121716', 'ENSG00000271664', 'ENSG00000260555', 'ENSG00000236018', 'ENSG00000260721', 'ENSG00000249258', 'ENSG00000158815', 'ENSG00000197181', 'ENSG00000253200', 'ENSG00000134013', 'ENSG00000250979', 'ENSG00000253948', 'ENSG00000169946', 'ENSG00000253372', 'ENSG00000104529', 'ENSG00000234740', 'ENSG00000164970', 'ENSG00000237159', 'ENSG00000274026', 'ENSG00000136925', 'ENSG00000237461', 'ENSG00000196739', 'ENSG00000182752', 'ENSG00000286196', 'ENSG00000234771', 'ENSG00000280474', 'ENSG00000214402', 'ENSG00000197070', 'ENSG00000205696', 'ENSG00000285852', 'ENSG00000285737', 'ENSG00000188234', 'ENSG00000204172', 'ENSG00000178440', 'ENSG00000166343', 'ENSG00000229990', 'ENSG00000236552', 'ENSG00000155287', 'ENSG00000107819', 'ENSG00000273521', 'ENSG00000203772', 'ENSG00000177595', 'ENSG00000117983', 'ENSG00000247595', 'ENSG00000254622', 'ENSG00000162236', 'ENSG00000213465', 'ENSG00000110025', 'ENSG00000131620', 'ENSG00000241170', 'ENSG00000186174', 'ENSG00000186166', 'ENSG00000240970', 'ENSG00000254428', 'ENSG00000254909', 'ENSG00000110811', 'ENSG00000111664', 'ENSG00000111678', 'ENSG00000205885', 'ENSG00000256589', 'ENSG00000256682', 'ENSG00000247903', 'ENSG00000257433', 'ENSG00000139631', 'ENSG00000185482', 'ENSG00000123329', 'ENSG00000166987', 'ENSG00000178498', 'ENSG00000224713', 'ENSG00000213363', 'ENSG00000110887', 'ENSG00000257097', 'ENSG00000251497', 'ENSG00000279500', 'ENSG00000279283', 'ENSG00000198553', 'ENSG00000043355', 'ENSG00000126216', 'ENSG00000233695', 'ENSG00000258515', 'ENSG00000270433', 'ENSG00000276698', 'ENSG00000257986', 'ENSG00000258648', 'ENSG00000258682', 'ENSG00000196553', 'ENSG00000100632', 'ENSG00000258376', 'ENSG00000258891', 'ENSG00000183648', 'ENSG00000202191', 'ENSG00000223403', 'ENSG00000246451', 'ENSG00000201992', 'ENSG00000215252', 'ENSG00000243789', 'ENSG00000242866', 'ENSG00000250130', 'ENSG00000259619', 'ENSG00000247982', 'ENSG00000255346', 'ENSG00000246877', 'ENSG00000169752', 'ENSG00000274376', 'ENSG00000255769', 'ENSG00000249487', 'ENSG00000261505', 'ENSG00000261123', 'ENSG00000259895', 'ENSG00000279520', 'ENSG00000262312', 'ENSG00000188897', 'ENSG00000243716', 'ENSG00000166851', 'ENSG00000224310')
+ProbGenes <- c("ENSG00000234593", "ENSG00000092847", "ENSG00000232878", "ENSG00000134256", "ENSG00000143393", "ENSG00000162736", "ENSG00000143156", "ENSG00000203737", "ENSG00000232036", "ENSG00000153827","ENSG00000234661", "ENSG00000131370", "ENSG00000281708", "ENSG00000242103", "ENSG00000279311", "ENSG00000249252", "ENSG00000170180", "ENSG00000240083", "ENSG00000249175", "ENSG00000229688", "ENSG00000105953", "ENSG00000146707", "ENSG00000253420", "ENSG00000279608", "ENSG00000232807", "ENSG00000119946", "ENSG00000236991", "ENSG00000177951", "ENSG00000250644", "ENSG00000158077", "ENSG00000110104", "ENSG00000149452", "ENSG00000255345", "ENSG00000254705", "ENSG00000256533", "ENSG00000249028", "ENSG00000285627", "ENSG00000111215", "ENSG00000212128", "ENSG00000066117", "ENSG00000123297", "ENSG00000270048", "ENSG00000251536", "ENSG00000237263", "ENSG00000102796", "ENSG00000258469", "ENSG00000140009", "ENSG00000259370", "ENSG00000137764", "ENSG00000127578", "ENSG00000263072", "ENSG00000261528", "ENSG00000261872", "ENSG00000198453", "ENSG00000189164", "ENSG00000149488", "ENSG00000233993", "ENSG00000100991", "ENSG00000100982", "ENSG00000243646", "ENSG00000239282", "ENSG00000068354", "ENSG00000271356", "ENSG00000241101", "ENSG00000248624", "ENSG00000227017", "ENSG00000240395", "ENSG00000285933", "ENSG00000256064", "ENSG00000177699", "ENSG00000278090", "ENSG00000264529", "ENSG00000243978", "ENSG00000225828", "ENSG00000116525", "ENSG00000225767", "ENSG00000229359", "ENSG00000143257", "ENSG00000143643", "ENSG00000272865", "ENSG00000235760", "ENSG00000227331", "ENSG00000229056", "ENSG00000183977", "ENSG00000239926", "ENSG00000239997", "ENSG00000279349", "ENSG00000229638", "ENSG00000250243", "ENSG00000249212", "ENSG00000250361", "ENSG00000250910", "ENSG00000283355", "ENSG00000251634", "ENSG00000061455", "ENSG00000285605", "ENSG00000285868", "ENSG00000235859", "ENSG00000228735", "ENSG00000205485", "ENSG00000236018", "ENSG00000260721", "ENSG00000169946", "ENSG00000234740", "ENSG00000136925", "ENSG00000237461", "ENSG00000182752", "ENSG00000205696", "ENSG00000285852", "ENSG00000178440", "ENSG00000107819", "ENSG00000131620", "ENSG00000256589", "ENSG00000256682", "ENSG00000213363", "ENSG00000110887", "ENSG00000126216", "ENSG00000258648", "ENSG00000196553", "ENSG00000250130", "ENSG00000259619", "ENSG00000236194", "ENSG00000263089", "ENSG00000235552", "ENSG00000278971", "ENSG00000222460", "ENSG00000235347", "ENSG00000185448", "ENSG00000233204", "ENSG00000184616", "ENSG00000238184", "ENSG00000274322", "ENSG00000235038", "ENSG00000230470", "ENSG00000234601", "ENSG00000277769", "ENSG00000232131", "ENSG00000235631", "ENSG00000272076", "ENSG00000168828", "ENSG00000279822", "ENSG00000235010", "ENSG00000280379", "ENSG00000286067", "ENSG00000279628", "ENSG00000265316", "ENSG00000277829", "ENSG00000223799", "ENSG00000231875", "ENSG00000227232", "ENSG00000160679", "ENSG00000236440", "ENSG00000206341", "ENSG00000138071", "ENSG00000131507", "ENSG00000179151", "ENSG00000263326", "ENSG00000109111", "ENSG00000166317", "ENSG00000219433" )
+
+
+fooOld <- c('ENSG00000227232', 'ENSG00000248527', 'ENSG00000285812', 'ENSG00000272455', 'ENSG00000215915', 'ENSG00000269737', 'ENSG00000157911', 'ENSG00000226029', 'ENSG00000121775', 'ENSG00000225828', 'ENSG00000116525', 'ENSG00000197982', 'ENSG00000285728', 'ENSG00000225767', 'ENSG00000229359', 'ENSG00000270629', 'ENSG00000160679', 'ENSG00000177954', 'ENSG00000227741', 'ENSG00000143257', 'ENSG00000236535', 'ENSG00000118194', 'ENSG00000143862', 'ENSG00000240219', 'ENSG00000123838', 'ENSG00000272645', 'ENSG00000143643', 'ENSG00000223694', 'ENSG00000272865', 'ENSG00000286216', 'ENSG00000179270', 'ENSG00000235760', 'ENSG00000144031', 'ENSG00000115282', 'ENSG00000232931', 'ENSG00000236440', 'ENSG00000227331', 'ENSG00000272211', 'ENSG00000229056', 'ENSG00000144410', 'ENSG00000144452', 'ENSG00000152056', 'ENSG00000183977', 'ENSG00000230409', 'ENSG00000172940', 'ENSG00000232354', 'ENSG00000281691', 'ENSG00000162267', 'ENSG00000189283', 'ENSG00000239926', 'ENSG00000239997', 'ENSG00000279349', 'ENSG00000285943', 'ENSG00000241278', 'ENSG00000240695', 'ENSG00000114113', 'ENSG00000240875', 'ENSG00000206120', 'ENSG00000229638', 'ENSG00000225473', 'ENSG00000230732', 'ENSG00000242686', 'ENSG00000249592', 'ENSG00000013810', 'ENSG00000284727', 'ENSG00000249212', 'ENSG00000251022', 'ENSG00000250361', 'ENSG00000250910', 'ENSG00000164105', 'ENSG00000283355', 'ENSG00000261360', 'ENSG00000274441', 'ENSG00000152669', 'ENSG00000205571', 'ENSG00000251634', 'ENSG00000171530', 'ENSG00000061455', 'ENSG00000164406', 'ENSG00000285605', 'ENSG00000241112', 'ENSG00000285868', 'ENSG00000241956', 'ENSG00000124588', 'ENSG00000189134', 'ENSG00000206341', 'ENSG00000204227', 'ENSG00000156639', 'ENSG00000272137', 'ENSG00000146242', 'ENSG00000255330', 'ENSG00000118514', 'ENSG00000146576', 'ENSG00000235859', 'ENSG00000183696', 'ENSG00000228735', 'ENSG00000234500', 'ENSG00000274080', 'ENSG00000205485', 'ENSG00000121716', 'ENSG00000271664', 'ENSG00000260555', 'ENSG00000236018', 'ENSG00000260721', 'ENSG00000249258', 'ENSG00000158815', 'ENSG00000197181', 'ENSG00000253200', 'ENSG00000134013', 'ENSG00000250979', 'ENSG00000253948', 'ENSG00000169946', 'ENSG00000253372', 'ENSG00000104529', 'ENSG00000234740', 'ENSG00000164970', 'ENSG00000237159', 'ENSG00000274026', 'ENSG00000136925', 'ENSG00000237461', 'ENSG00000196739', 'ENSG00000182752', 'ENSG00000286196', 'ENSG00000234771', 'ENSG00000280474', 'ENSG00000214402', 'ENSG00000197070', 'ENSG00000205696', 'ENSG00000285852', 'ENSG00000285737', 'ENSG00000188234', 'ENSG00000204172', 'ENSG00000178440', 'ENSG00000166343', 'ENSG00000229990', 'ENSG00000236552', 'ENSG00000155287', 'ENSG00000107819', 'ENSG00000273521', 'ENSG00000203772', 'ENSG00000177595', 'ENSG00000117983', 'ENSG00000247595', 'ENSG00000254622', 'ENSG00000162236', 'ENSG00000213465', 'ENSG00000110025', 'ENSG00000131620', 'ENSG00000241170', 'ENSG00000186174', 'ENSG00000186166', 'ENSG00000240970', 'ENSG00000254428', 'ENSG00000254909', 'ENSG00000110811', 'ENSG00000111664', 'ENSG00000111678', 'ENSG00000205885', 'ENSG00000256589', 'ENSG00000256682', 'ENSG00000247903', 'ENSG00000257433', 'ENSG00000139631', 'ENSG00000185482', 'ENSG00000123329', 'ENSG00000166987', 'ENSG00000178498', 'ENSG00000224713', 'ENSG00000213363', 'ENSG00000110887', 'ENSG00000257097', 'ENSG00000251497', 'ENSG00000279500', 'ENSG00000279283', 'ENSG00000198553', 'ENSG00000043355', 'ENSG00000126216', 'ENSG00000233695', 'ENSG00000258515', 'ENSG00000270433', 'ENSG00000276698', 'ENSG00000257986', 'ENSG00000258648', 'ENSG00000258682', 'ENSG00000196553', 'ENSG00000100632', 'ENSG00000258376', 'ENSG00000258891', 'ENSG00000183648', 'ENSG00000202191', 'ENSG00000223403', 'ENSG00000246451', 'ENSG00000201992', 'ENSG00000215252', 'ENSG00000243789', 'ENSG00000242866', 'ENSG00000250130', 'ENSG00000259619', 'ENSG00000247982', 'ENSG00000255346', 'ENSG00000246877', 'ENSG00000169752', 'ENSG00000274376', 'ENSG00000255769', 'ENSG00000249487', 'ENSG00000261505', 'ENSG00000261123', 'ENSG00000259895', 'ENSG00000279520', 'ENSG00000262312', 'ENSG00000188897', 'ENSG00000243716', 'ENSG00000166851', 'ENSG00000224310')
                
  tmp<-c(              'ENSG00000262155', 'ENSG00000260853', 'ENSG00000279789', 'ENSG00000156858', 'ENSG00000261439', 'ENSG00000089505', 'ENSG00000280334', 'ENSG00000280214', 'ENSG00000196436', 'ENSG00000140905', 'ENSG00000280182', 'ENSG00000226180', 'ENSG00000224888', 'ENSG00000170296', 'ENSG00000263934', 'ENSG00000266385', 'ENSG00000073605', 'ENSG00000236194', 'ENSG00000266967', 'ENSG00000262265', 'ENSG00000121104', 'ENSG00000243678', 'ENSG00000263089', 'ENSG00000263499', 'ENSG00000213246', 'ENSG00000172809', 'ENSG00000279382', 'ENSG00000262580', 'ENSG00000235552', 'ENSG00000263847', 'ENSG00000278983', 'ENSG00000278971', 'ENSG00000273218', 'ENSG00000268189', 'ENSG00000279203', 'ENSG00000279716', 'ENSG00000280332', 'ENSG00000267419', 'ENSG00000105185', 'ENSG00000239382', 'ENSG00000267053', 'ENSG00000233527', 'ENSG00000267254', 'ENSG00000171777', 'ENSG00000105221', 'ENSG00000268460', 'ENSG00000063177', 'ENSG00000104852', 'ENSG00000074219', 'ENSG00000167608', 'ENSG00000267838', 'ENSG00000177732', 'ENSG00000088832', 'ENSG00000131044', 'ENSG00000101421', 'ENSG00000222460', 'ENSG00000183798', 'ENSG00000101104', 'ENSG00000124172', 'ENSG00000286018', 'ENSG00000160224', 'ENSG00000223901', 'ENSG00000239415', 'ENSG00000234409', 'ENSG00000250479', 'ENSG00000279738', 'ENSG00000205702', 'ENSG00000226450', 'ENSG00000182841', 'ENSG00000279175', 'ENSG00000280434', 'ENSG00000235347', 'ENSG00000170638', 'ENSG00000185448', 'ENSG00000271199', 'ENSG00000198960', 'ENSG00000286000', 'ENSG00000241489', 'ENSG00000213397', 'ENSG00000198938', 'ENSG00000137970', 'ENSG00000230470', 'ENSG00000234781', 'ENSG00000233204', 'ENSG00000214389', 'ENSG00000235631', 'ENSG00000280379', 'ENSG00000279628', 'ENSG00000276663', 'ENSG00000263551', 'ENSG00000265316', 'ENSG00000231875', 'ENSG00000235790', 'ENSG00000242516', 'ENSG00000272040', 'ENSG00000250472', 'ENSG00000281706', 'ENSG00000184616', 'ENSG00000285581', 'ENSG00000238184', 'ENSG00000258136', 'ENSG00000136378', 'ENSG00000140682', 'ENSG00000279251', 'ENSG00000108375', 'ENSG00000279917', 'ENSG00000269318', 'ENSG00000270804', 'ENSG00000274322', 'ENSG00000235958', 'ENSG00000235038', 'ENSG00000228686', 'ENSG00000058673', 'ENSG00000234601', 'ENSG00000236549', 'ENSG00000091181', 'ENSG00000145020', 'ENSG00000248734', 'ENSG00000277769', 'ENSG00000146285', 'ENSG00000232131', 'ENSG00000228495', 'ENSG00000231760', 'ENSG00000272076', 'ENSG00000168828', 'ENSG00000279822', 'ENSG00000235010', 'ENSG00000250397', 'ENSG00000255159', 'ENSG00000258102', 'ENSG00000286067', 'ENSG00000274317', 'ENSG00000180662', 'ENSG00000259499', 'ENSG00000261207', 'ENSG00000175311', 'ENSG00000260751', 'ENSG00000261291', 'ENSG00000278668', 'ENSG00000266598', 'ENSG00000280248', 'ENSG00000276952', 'ENSG00000277829', 'ENSG00000223799', 'ENSG00000213790', 'ENSG00000271916', 'ENSG00000249863', 'ENSG00000267655', 'ENSG00000133872', 'ENSG00000224689','ENSG00000255389', 'ENSG00000253230', 'ENSG00000247137', 'ENSG00000170906', 'ENSG00000182195' )
 
  
- ProbGenes <- c(ProbGenes,tmp)
+ #ProbGenes <- c(ProbGenes,tmp)
 ```
 
 ### Data download
@@ -231,6 +234,7 @@ Determine relationship between covariates
 #primaryVariable <- c("Tissue.SourceDiagnosis", "Tissue.Diagnosis", "Tissue.APOE4")
 primaryVariable <- c("Dx.TissueSource", "Dx.Tissue")
 #_# ADD DIAGNOSIS HERE TO REGRESS FOR TWAS
+
 FactorCovariates <- c('Individual_ID','FlowcellBatch', "Institution", "Reported_Gender", "LibraryBatch", "Tissue", "Dx.Tissue", "Dx", "RibozeroBatch")
 #_#FactorCovariates <- c('Individual_ID', "Institution","Dx.Tissue", "Reported_Gender", "Dx", "RibozeroBatch")
 ContCovariates <- c("Age_of_Death", "PMI", "RIN", "MappedReads", "IntragenicRate", "IntronicRate", "IntergenicRate", "GenesDetected", "ExpProfEfficiency", "rRNARate", "TotalReads","AlignmentRate", "EV.1", "EV.2", "EV.3", "EV.4", "EV.5")
@@ -255,9 +259,9 @@ draw(COVARIATES.CORRELATION$plot, heatmap_legend_side = 'left', padding  = unit(
 ### Explore metadata
 ```{r data.explore, cache=FALSE, fig.width = 12, fig.height = 8}
 
-METADATA <- METADATA[ METADATA$Tissue == 'DLPFC', ]
+METADATA <- METADATA[ METADATA$Tissue == 'ACC', ]
 counts <- counts[ , METADATA$SampleID]
-COVARIATES=COVARIATES[ COVARIATES$Tissue == 'DLPFC' ,]
+COVARIATES=COVARIATES[ COVARIATES$Tissue == 'ACC' ,]
 my.theme = theme(legend.position = 'top', axis.text.x = element_text(angle = 90, hjust = 1))
 # RIN
 p = list()
@@ -285,6 +289,7 @@ multiplot(plotlist = p, cols = 3)
 * Remove genes that have less than 1 cpm counts in at least 50% of samples per Tissue x Diagnosis
 * Remove genes with missing gene length and percentage GC content
 ```{r filter.genes}
+
 COUNT<-counts[,METADATA$SampleID]
 row.names(COVARIATES) <- METADATA$SampleID
 
@@ -512,7 +517,22 @@ Correlation between pca of unadjusted mRNA expression and covariates are used to
 ```{r preadj.covariates, cache=TRUE}
 # Find correlation between PC's of gene expression with covariates
 #CQN.GENE_EXPRESSION$E.no.na <- as.data.frame(CQN.GENE_EXPRESSION$E.no.na)
+
+row.names(METADATA) <- METADATA$SampleID
 COVARIATES1 <- COVARIATES[ , (colnames(COVARIATES) %in% 'Tissue') == F]
+
+
+COVARIATES1$Institution <- as.factor(as.character(COVARIATES1$Institution))
+COVARIATES1$Individual_ID <- as.factor(as.character(COVARIATES1$Individual_ID))
+COVARIATES1$FlowcellBatch <- as.factor(as.character(COVARIATES1$FlowcellBatch))
+COVARIATES1$Reported_Gender <- as.factor(as.character(COVARIATES1$Reported_Gender))
+COVARIATES1$Dx.Tissue <- as.factor(as.character(COVARIATES1$Dx.Tissue))
+COVARIATES1$RibozeroBatch <- as.factor(as.character(COVARIATES1$RibozeroBatch))
+COVARIATES1$LibraryBatch <- as.factor(as.character(COVARIATES1$LibraryBatch))
+COVARIATES1$SampID <- as.factor(as.character(row.names(COVARIATES1)))
+COVARIATES1$Ancestry <- as.factor(as.character(METADATA[row.names(COVARIATES1),]$Ethnicity))
+
+
 preAdjustedSigCovars = runPCAandPlotCorrelations(CQN.GENE_EXPRESSION$E.no.na, 
                                                  COVARIATES1,
                                                  'NULL design(voom-normalized)', 
@@ -533,8 +553,10 @@ NOTE:
 2. Adding Source, FLOWCELL and Gender a priori to variable selection
 3. Primary variable of interest Tissue.Diagnosis is excluded from the pool of available covariates for selection
 ```{r iterative.norm, results='asis'}
+
 # Primary variable of interest
 postAdjustCovars = c('Institution', 'FlowcellBatch', 'Reported_Gender');
+#postAdjustCovars = c('Institution', 'Reported_Gender');
 # Assign residual covariates
 residualCovars = setdiff(preAdjustedSigCovars$significantCovars, 
                          c(postAdjustCovars, primaryVariable, 'Individual_ID'))
@@ -543,12 +565,16 @@ covariatesEffects = preAdjustedSigCovars$Effects.significantCovars[residualCovar
 postAdjustCovars = c(postAdjustCovars, names(which.max(covariatesEffects))) %>% unique()
 notEstimable = c()
 
+
+COVARIATES1$Block <- as.factor(as.character(sample(c(1:200), 485, replace = TRUE, prob = NULL)))
+
 loopCount = 0 
 while(length(residualSigCovars$significantCovars)!=0 && loopCount <= 20){
+  COVARIATES1$Block <- as.factor(as.character(sample(c(1:200), 485, replace = TRUE, prob = NULL)))
   writeLines(paste0('Working on Loop: ', loopCount))
   writeLines(paste('Using following covariates in the model:',
                    paste(postAdjustCovars, collapse=', '),
-                   'as fixed effects and Individual_ID as random effect'))
+                   'as fixed effects and Individual_ID/Institution as random effect'))
   
   # Post adjusted design matrix
   DM1 = getDesignMatrix(COVARIATES1[,postAdjustCovars,drop=F],Intercept = F)
@@ -562,7 +588,8 @@ while(length(residualSigCovars$significantCovars)!=0 && loopCount <= 20){
   # Calculate correlation values of random effects
   VOOM.GENE_EXPRESSION$E = CQN.GENE_EXPRESSION$E
   correlation = parallelDuplicateCorrelation(VOOM.GENE_EXPRESSION,
-                                             block = COVARIATES1$Individual_ID,
+
+                                             block = COVARIATES1$Block,
                                              method = 'lmer')
   # correlation = list(); correlation$cor = 0.3819258
   
@@ -570,14 +597,16 @@ while(length(residualSigCovars$significantCovars)!=0 && loopCount <= 20){
     # Re-estimate voom weights
     VOOM.GENE_EXPRESSION = voom(cnts, 
                                 design=DM1$design, plot=F, 
-                                block = COVARIATES1$Individual_ID, 
+
+                                block = COVARIATES1$Block, 
                                 correlation = correlation$cor)
     
     # Fit linear model using new weights and new design
     VOOM.ADJUSTED.FIT = lmFit(CQN.GENE_EXPRESSION$E,
                               design = DM1$design,
                               weights = VOOM.GENE_EXPRESSION$weights,
-                              block = COVARIATES1$Individual_ID, 
+
+                              block = COVARIATES1$Block, 
                               correlation = correlation$cor)
     
     # Residuals after normalisation
@@ -591,13 +620,20 @@ while(length(residualSigCovars$significantCovars)!=0 && loopCount <= 20){
   # Residual covariates to choose from
   residCovars <- setdiff(c(FactorCovariates,ContCovariates),
                          c(postAdjustCovars, primaryVariable, 'Individual_ID', notEstimable))
+
   residCovars <- residCovars[ (residCovars == 'Tissue') == F ]
   
   # Find PC of residual gene expression and significant covariates that are highly correlated with PCs
   expr = RESIDUAL.GENE_EXPRESSION; expr[is.na(expr)] = 0
   
+  #residualSigCovars = runPCAandPlotCorrelations(expr[ (row.names(expr) %in% ProbGenes) == F, ], 
+                                        #        COVARIATES1[, residCovars, drop=F], 
+                                        #        'adjusted design(voom-normalized)',
+                                        #        isKeyPlot=TRUE)
+  writeLines(paste0('Residule Calc for Loop: ', loopCount))
   residualSigCovars = runPCAandPlotCorrelations(expr, 
-                                                COVARIATES1[, residCovars, drop=F], 
+
+                                                COVARIATES[, residCovars, drop=F], 
                                                 'adjusted design(voom-normalized)',
                                                 isKeyPlot=TRUE)
   
@@ -695,16 +731,9 @@ Conditioned on primary variable (Tissue.Diagnosis) and identified covariates est
 
 FactorCovariates <- c("Individual_ID", "FlowcellBatch", "Institution", "Reported_Gender", "LibraryBatch", "Dx.Tissue", "Dx", "RibozeroBatch")
 ContCovariates <- c("Age_of_Death", "PMI", "RIN", "MappedReads", "IntragenicRate", "IntronicRate", "IntergenicRate", "GenesDetected", "ExpProfEfficiency", "rRNARate", "TotalReads","AlignmentRate", "EV.1", "EV.2", "EV.3", "EV.4", "EV.5")
-
-# Find inter relation between factor covariates
-#METADATA <- METADATA[ !duplicated(METADATA), ]
-#COVARIATES1 = METADATA[,c(FactorCovariates,ContCovariates),drop=F]
-#rownames(COVARIATES1) <- METADATA$ID
-# Convert factor covariates to factors
 COVARIATES1[,FactorCovariates] = lapply(COVARIATES1[,FactorCovariates], factor)
 COVARIATES1[,ContCovariates] = lapply(COVARIATES1[,ContCovariates], as.character)
 COVARIATES1[,ContCovariates] = lapply(COVARIATES1[,ContCovariates], as.numeric)
-
 
 # Get design matrix
 DESIGN = getDesignMatrix(COVARIATES1[, c(primaryVariable[2], postAdjustCovars), drop = F], Intercept = F)
@@ -715,14 +744,15 @@ VOOM.WEIGHTS = voom(cnts, design=DESIGN$design, plot=F)
 # Re-estimate voom weights
 VOOM.WEIGHTS = voom(cnts,
                     design=DESIGN$design, plot=F,
-                    block = COVARIATES1$Donor_ID, 
+
+                    block = COVARIATES1$Block, 
                     correlation = correlation$cor)
 # Fit linear model using new weights and new design
 VOOM.WEIGHTS$E = CQN.GENE_EXPRESSION$E
 FIT = lmFit(VOOM.WEIGHTS$E,
             weights = VOOM.WEIGHTS$weights,
             design = VOOM.WEIGHTS$design[,colnames(VOOM.NET.FIT)],
-            block = COVARIATES$Donor_ID, 
+            block = COVARIATES1$Block, 
             correlation = correlation$cor)
 
 # Get (null) design matrix
@@ -766,14 +796,14 @@ VOOM.SVA.WEIGHTS = voom(cnts, design=cbind(MODEL1, SURR.VAR), plot=F)
 # Re-estimate voom weights
 VOOM.SVA.WEIGHTS = voom(cnts, 
                         design = cbind(MODEL1, SURR.VAR), plot=F,
-                        block = COVARIATES1$Donor_ID, 
+                        block = COVARIATES1$Block, 
                         correlation = correlation$cor)
 # Fit linear model using new weights and new design
 VOOM.SVA.WEIGHTS$E = CQN.GENE_EXPRESSION$E
 VOOM.SVA.FIT = lmFit(VOOM.SVA.WEIGHTS$E,
                      weights = VOOM.SVA.WEIGHTS$weights,
                      design = VOOM.SVA.WEIGHTS$design,
-                     block = COVARIATES1$Donor_ID, 
+                     block = COVARIATES1$Block, 
                      correlation = correlation$cor)
 # Residuals after normalisation
 RESIDUAL.SVA.GENE_EXPRESSION = residuals.MArrayLM(VOOM.SVA.FIT,
@@ -784,16 +814,10 @@ RESIDUAL.SVA.GENE_EXPRESSION = RESIDUAL.SVA.GENE_EXPRESSION +
   VOOM.SVA.FIT$coefficients[,varsToAddIn] %*% t(VOOM.SVA.FIT$design[,varsToAddIn])
 ```
 
-
-
-
-
-
-
 ```{r synapse.parameters, include=FALSE, cache=TRUE}
-parentId = 'syn21442618';
+parentId = 'syn21478397';
 activityName = 'Covariate and Diagnosis Regression';
-activityDescription = 'CMCCovariate analysis and Regrsison of AD Diagnosis of aligned effective counts with GRCh38 with CQN normalisation (DLPFC)';
+activityDescription = 'CMC Covariate analysis and Regrsison of AD Diagnosis of aligned effective counts with GRCh38 with CQN normalisation (ACC)';
 thisFileName <- 'CMC_DataProcessing.Rmd'
 # Github link
 thisRepo <- githubr::getRepo(repository = "jgockley62/TWAS", ref="branch", refName='master')
@@ -804,9 +828,10 @@ thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('c
 ```{r synapse.store, include=FALSE, eval=TRUE, cache=FALSE}
 activityName = 'CMC Covariate and Diagnosis Regression';
 activityDescription = 'CMC Covariate analysis and Regrssion of Diagnosis of aligned effective counts with GRCh38 with CQN normalisation CMC';
-CODE <- syn_temp$store(synapseclient$Folder(name = "Iterative_DLPFC_Normalization", parentId = parentId))
+CODE <- syn_temp$store(synapseclient$Folder(name = "Iterative_ACC_Normalization", parentId = parentId))
+
 #Set Used SynIDs For Provenance
-Syns_Used <- c("")
+#Syns_Used <- c("")
 
 # Set annotations
 all.annotations = list(
@@ -814,7 +839,7 @@ all.annotations = list(
   dataSubType = 'geneExp',
   summaryLevel = 'gene',
   assay	 = 'RNAseq',
-  tissueTypeAbrv	= c('DLPFC'), 
+  tissueTypeAbrv	= c('ACC'), 
   study = 'CMC', 
   organism = 'HomoSapiens',
   consortium	= 'CMC',
@@ -824,20 +849,19 @@ all.annotations = list(
   genomeAssemblyID = 'GRCh38'
 )
 
-
 #TODO add provenance used = Syns_Used,
 
 # Store SVA results
-write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CMC_SVA_Diagnosis_Corrected.tsv', sep = '\t', quote=F)
-ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='CMC_SVA_Diagnosis_Corrected.tsv', name = 'Normalised, covariates, surrogate and Diagnosis variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CMC_SVA_ACC_Diagnosis_Corrected.tsv', sep = '\t', quote=F)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='CMC_SVA_ACC_Diagnosis_Corrected.tsv', name = 'ACC Normalised, covariates, surrogate and Diagnosis variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
   all.annotations$dataSubType = 'residualGeneExpForeQTL'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
   
 # Store residual gene expression for network analysis
 RESIDUAL.NET.GENE_EXPRESSION %>%
   rownameToFirstColumn('ensembl_gene_id') %>%
-  write.table(file = 'CMC_Diagnosis_Regressed_netResidualExpression.tsv', sep = '\t', row.names=F, quote=F)
-ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='CMC_Diagnosis_Regressed_netResidualExpression.tsv', name = 'Normalised, covariates and Diagnosis removed residual expression (for network analysis)', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  write.table(file = 'CMC_ACC_Diagnosis_Regressed_netResidualExpression.tsv', sep = '\t', row.names=F, quote=F)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='CMC_ACC_Diagnosis_Regressed_netResidualExpression.tsv', name = 'ACC Normalised, covariates and Diagnosis removed residual expression (for network analysis)', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
   all.annotations$dataSubType = 'residualGeneExpForNetAnlz'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 ```
@@ -854,7 +878,8 @@ syn_temp$login()
 setwd("~/TWAS/code/")
 source("~/TWAS/utilityFunctions/knitfile2synapseClient.R")
 source("~/TWAS/utilityFunctions/hook_synapseMdSyntax_plot.R")
-createAndKnitToFolderEntityClient(file = "CMC_Exp_DataProcessing.Rmd",
-                                          parentId ="syn21470292",
-                                          folderName = 'DLFPC')
+createAndKnitToFolderEntityClient(file = "CMC_ACC_Exp_DataProcessing_V2.Rmd",
+
+                                          parentId ="syn21478397",
+                                          folderName = 'ACC')
 ```
