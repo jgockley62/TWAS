@@ -1,0 +1,318 @@
+---
+title: "CMC Validation"
+output: html_document
+---
+
+Date of analysis update: "`r date()`"
+
+```{r libs, echo=FALSE, warning=FALSE, message=FALSE, include=FALSE, cache=FALSE}
+##It is assumed your working directory is "~/ampad-DiffExp/gene_level_analysis"
+## Load required libraries
+library(ggplot2)
+library(stringr)
+
+setwd("~/TWAS/code/")
+source("~/TWAS/utilityFunctions/knitfile2synapseClient.R")
+source("~/TWAS/utilityFunctions/hook_synapseMdSyntax_plot.R")
+
+options(xtable.type="html")
+# Source modified utility functions from limma and sva package
+source('~/TWAS/utilityFunctions/parallelDuplicateCorrelation.R')
+source('~/TWAS/utilityFunctions/irwsva.build.R')
+source('~/TWAS/utilityFunctions/f.pvalue.R')
+knitr::opts_chunk$set(
+  echo=FALSE,
+  warning=FALSE,
+  message=FALSE,
+  error = FALSE,
+  tidy = FALSE,
+  cache = TRUE)
+```
+
+## Validation
+
+```{r Val}
+
+################################################################################################################
+#CMC DLPFC DATA
+Impute <-  as.data.frame( read.table( syn_temp$get('syn21442621')$path, header = T, sep = '\t', row.names = 1 ))
+row.names(Impute)  <- Impute$IID
+Impute <- Impute[ , colnames(Impute)[ (grepl("ENSG", colnames(Impute))) == T ] ]
+Impute <- as.data.frame(t(Impute))
+
+#Exp
+Exp <- as.data.frame( read.table( syn_temp$get('syn21470926')$path, header = T, sep = '\t', row.names = 1 ))
+rownames(Exp) <- do.call( rbind, strsplit(row.names(Exp),'\\.'))[,1]
+Exp_ACC <- Exp[ ,(grepl("_ACC_", colnames(Exp)))==T ]
+Exp_PFC <- Exp[ ,(grepl("_PFC_", colnames(Exp)))==T ]
+
+#ID--
+ID <- read.csv( syn_temp$get('syn21444814')$path, header = T )
+table(colnames(Exp) %in% ID$RNAseq.Sample_RNA_ID )
+table(colnames(Exp_ACC) %in% ID$RNAseq.Sample_RNA_ID )
+table(colnames(Exp_PFC) %in% ID$RNAseq.Sample_RNA_ID )
+
+ID_GENO <- ID[( ID$Genotypes.Genotyping_Sample_ID) %in% gsub( '0_', '', colnames(Impute) )  == T , ]
+dups <- ID[ ID$Individual_ID %in% names(table(ID_GENO$Individual_ID)[table(ID_GENO$Individual_ID)>1]), ]
+ID_GENO <- ID_GENO[ (ID_GENO$RNAseq.Sample_RNA_ID %in% dups$RNAseq.Sample_RNA_ID[grepl("_BP_", dups$RNAseq.Sample_RNA_ID)]) == F, ]
+row.names(ID_GENO) <- as.character( ID_GENO$Genotypes.Genotyping_Sample_ID )
+
+#Replace columnn names
+colnames(Impute) <- as.character( ID_GENO[ gsub( '0_', '', colnames(Impute) ), ]$Individual_ID )
+
+ID_RNA <- ID[ ID$RNAseq.Sample_RNA_ID  %in% colnames(Exp_PFC), ]
+row.names(ID_RNA) <- ID_RNA$RNAseq.Sample_RNA_ID
+ID_RNA$Individual_ID <- as.character(ID_RNA$Individual_ID)
+colnames(Exp_PFC) <- as.character( ID_RNA[ colnames(Exp_PFC), ]$Individual_ID)
+
+FinNames <- colnames(Exp_PFC)[ colnames(Exp_PFC)  %in% colnames(Impute) ]
+Impute_comp<-Impute[, FinNames ]
+Exp_PFC<-Exp_PFC[, FinNames ]
+table( colnames(Impute_comp) %in% colnames(Exp_PFC) )
+
+#Filter Row names
+keepers <- row.names(Exp_PFC)[ row.names(Exp_PFC) %in% row.names(Impute_comp) ]
+Impute_comp <- Impute_comp[ keepers, ]
+Exp_PFC <- Exp_PFC[ keepers, ]
+table( row.names(Impute_comp) %in% row.names(Exp_PFC) )
+
+Scaled_PFC_Exp <- t(scale(t(Exp_PFC)))
+
+Correlation <- matrix(0, dim(Scaled_PFC_Exp)[1], 3)
+row.names(Correlation) <- row.names(Impute_comp)
+colnames(Correlation) <- c( "Z", "Correlation", "P-Val")
+
+for( Gene in row.names(Impute_comp) ){
+  foo <- cor.test( as.numeric(Impute_comp[Gene,]), as.numeric(Scaled_PFC_Exp[Gene,]) , method = "kendall")
+  Correlation[ Gene, ] <- c( as.numeric(foo$statistic), as.numeric(foo$estimate), as.numeric(foo$p.value) )
+}
+
+Correlation <- cbind( Correlation, "Log10_Pval"= -log10(Correlation[,3]))
+Correlation <- cbind( Correlation, "FDR"= p.adjust( Correlation[,3], method = "fdr", n = 13650) )
+Correlation <- cbind( Correlation, "BH"= p.adjust( Correlation[,3], method = "BH", n = 13650) )
+Correlation <- cbind( Correlation, "BF"= p.adjust( Correlation[,3], method = "bonferroni", n = 13650) )
+
+Correlation <- cbind( Correlation, "FDR_W_Only"= p.adjust( Correlation[,3], method = "fdr", n = 6643) )
+Correlation <- cbind( Correlation, "BH_W_Only"= p.adjust( Correlation[,3], method = "BH", n = 6643) )
+Correlation <- cbind( Correlation, "BF_W_Only"= p.adjust( Correlation[,3], method = "bonferroni", n = 6643) )
+
+Correlation <- as.data.frame(Correlation)
+Correlation$Sig <- 'NO'
+Correlation[ Correlation$FDR_W_Only < 0.05 & Correlation$Correlation > 0 , ]$Sig <- 'YES'
+
+setEPS()
+postscript("DLPFC_Val.eps", onefile = TRUE)
+  ggplot( data = Correlation, aes( x = Correlation, y = Log10_Pval, col = Sig ) ) + 
+    geom_point() + ggtitle("Log10( PVal) vs. Correlation" ) + 
+    theme(plot.title = element_text(hjust = 0.5)) + ylab("-Log( PValue)") 
+dev.off()
+ggplot( data = Correlation, aes( x = Correlation, y = Log10_Pval, col = Sig ) ) + 
+    geom_point() + ggtitle("Log10( PVal) vs. Correlation" ) + 
+    theme(plot.title = element_text(hjust = 0.5)) + ylab("-Log( PValue)") 
+
+table( Correlation$Sig )
+dim(Correlation[ Correlation$FDR_W_Only < 0.05, ] )
+table( Correlation$`P-Val` < 0.05 )
+
+
+VWs <- row.names( Correlation[ Correlation$FDR_W_Only < 0.05 & Correlation$Correlation > 0, ] )
+length(VWs)/dim(Correlation)[1]
+# 71.08234 % $
+
+setEPS()
+postscript("DLPFC_Cor_All.eps", onefile = TRUE)
+  hist( Correlation$Correlation, breaks = 100, xlab = 'Correlation', las = 1,
+      main="Correlation of All 6643 Matched Genes in CMC DLPFC")
+dev.off()
+
+hist( Correlation$Correlation, breaks = 100, xlab = 'Correlation', las = 1,
+      main="Correlation of All 6643 Matched Genes in CMC DLPFC")
+
+setEPS()
+postscript("DLFPFC_Cor_gt5Perc.eps", onefile = TRUE)
+  hist( Correlation[Correlation$FDR_W_Only < 0.05, ]$Correlation, 
+      breaks = 100, 
+      xlab = 'Correlation', 
+      las = 1,
+      main="Correlation of Genes with FDR Corrected P-Value < 0.05")
+dev.off()
+hist( Correlation[Correlation$FDR_W_Only < 0.05, ]$Correlation, 
+      breaks = 100, 
+      xlab = 'Correlation', 
+      las = 1,
+      main="Correlation of Genes with FDR Corrected P-Value < 0.05")
+################################################################################
+#CMC ACC DATA
+library(stringr)
+
+Impute <-  as.data.frame( read.table(syn_temp$get('syn21442621')$path, header = T, sep = '\t', row.names = 1 ))
+row.names(Impute)  <- Impute$IID
+Impute <- Impute[ , colnames(Impute)[ (grepl("ENSG", colnames(Impute))) == T ] ]
+Impute <- as.data.frame(t(Impute))
+colnames(Impute) <- gsub( "BP_", "", gsub("0_", "CMC_", colnames(Impute) ))
+
+#Exp--
+Exp <- as.data.frame( read.table( syn_temp$get('syn21483472')$path, header = T, sep = '\t', row.names = 1 ))
+rownames(Exp) <- do.call( rbind, strsplit(row.names(Exp),'\\.'))[,1]
+Exp_ACC <- Exp[ ,(grepl("_ACC_", colnames(Exp)))==T ]
+
+#ID--
+ID <- read.csv( syn_temp$get('syn21444814')$path, header = T )
+table(colnames(Exp) %in% ID$RNAseq.Sample_RNA_ID )
+
+colnames(Exp_ACC) <- paste0( "CMC_", gsub( "RNA_", "", gsub("_RNA_ACC_", "_", gsub( "ACC_BP_", "", colnames(Exp_ACC) ))))
+Exp <- Exp_ACC
+#Sync Names
+Padder <- function( names ){
+  #'@names format of 'CMC_PITT_XXXX' ie colnames(Exp)
+  foo <- do.call( rbind, strsplit(names, '_'))
+  foo[,3] <- str_pad(foo[,3], 5, pad = "0")
+  return( paste0(foo[,1], "_", foo[,2], "_", foo[,3] ) )
+}
+colnames(Exp) <- Padder( colnames(Exp) )
+colnames(Impute) <- Padder( colnames(Impute) )
+
+#Align Matices
+Impute <- Impute[ ,colnames(Impute)[ colnames(Impute) %in% colnames(Exp) ] ]
+Exp <- Exp[ ,colnames(Impute)[ colnames(Impute) %in% colnames(Exp) ] ]
+Impute <- Impute[ row.names(Impute)[ row.names(Impute) %in% row.names(Exp) ] ,]
+Exp <- Exp[ row.names(Impute)[ row.names(Impute) %in% row.names(Exp) ] ,]
+
+Correlation <- matrix(0, dim(Exp)[1], 3)
+row.names(Correlation) <- row.names(Impute)
+colnames(Correlation) <- c( "Z", "Correlation", "P-Val")
+
+Exp <- Exp[ , colnames(Impute)[colnames(Impute) %in% colnames(Exp)] ]
+Impute <- Impute[ , colnames(Impute)[colnames(Impute) %in% colnames(Exp)] ]
+
+for( Gene in row.names(Impute) ){
+  temp <- na.omit(cbind( as.numeric(Impute[Gene,]), as.numeric(Exp[Gene,]) ))
+  foo <- cor.test( temp[,1], temp[,2] , method = "kendall")
+  Correlation[ Gene, ] <- c( as.numeric(foo$statistic), as.numeric(foo$estimate), as.numeric(foo$p.value) )
+}
+
+Correlation <- cbind( Correlation, "Log10_Pval"= -log10(Correlation[,3]))
+Correlation <- cbind( Correlation, "FDR"= p.adjust( Correlation[,3], method = "fdr", n = 13650) )
+Correlation <- cbind( Correlation, "BH"= p.adjust( Correlation[,3], method = "BH", n = 13650) )
+Correlation <- cbind( Correlation, "BF"= p.adjust( Correlation[,3], method = "bonferroni", n = 13650) )
+
+Correlation <- cbind( Correlation, "FDR_W_Only"= p.adjust( Correlation[,3], method = "fdr", n = 6708) )
+Correlation <- cbind( Correlation, "BH_W_Only"= p.adjust( Correlation[,3], method = "BH", n = 6708) )
+Correlation <- cbind( Correlation, "BF_W_Only"= p.adjust( Correlation[,3], method = "bonferroni", n = 6708) )
+
+Correlation <- as.data.frame(Correlation)
+Correlation$Sig <- 'NO'
+Correlation[ Correlation$FDR_W_Only < 0.05 & Correlation$Correlation > 0 , ]$Sig <- 'YES'
+table(Correlation$Sig)
+
+setEPS()
+postscript("ACC_Val.eps", onefile = TRUE)
+  ggplot( data = Correlation, aes( x = Correlation, y = Log10_Pval, col = Sig ) ) + 
+    geom_point() + ggtitle("Log10( PVal) vs. Correlation" ) + 
+    theme(plot.title = element_text(hjust = 0.5)) + ylab("-Log( PValue)") 
+dev.off()
+ggplot( data = Correlation, aes( x = Correlation, y = Log10_Pval, col = Sig ) ) + 
+    geom_point() + ggtitle("Log10( PVal) vs. Correlation" ) + 
+    theme(plot.title = element_text(hjust = 0.5)) + ylab("-Log( PValue)") 
+
+setEPS()
+postscript("ACC_Cor_All.eps", onefile = TRUE)
+  hist( Correlation$Correlation, breaks = 100, xlab = 'Correlation', las = 1,
+      main="Correlation of All 6643 Matched Genes in CMC ACC")
+dev.off()
+hist( Correlation$Correlation, breaks = 100, xlab = 'Correlation', las = 1,
+      main="Correlation of All 6643 Matched Genes in CMC ACC")
+
+setEPS()
+postscript("ACC_Cor_gt5Perc.eps", onefile = TRUE)
+  hist( Correlation[Correlation$FDR_W_Only < 0.05, ]$Correlation, 
+      breaks = 100, 
+      xlab = 'Correlation', 
+      las = 1,
+      main="Correlation of Genes with FDR Corrected P-Value < 0.05")
+dev.off()
+hist( Correlation[Correlation$FDR_W_Only < 0.05, ]$Correlation, 
+      breaks = 100, 
+      xlab = 'Correlation', 
+      las = 1,
+      main="Correlation of Genes with FDR Corrected P-Value < 0.05")
+```
+
+```{r synapse.parameters, include=FALSE, cache=TRUE}
+parentId = 'syn21478397';
+activityName = 'Covariate and Diagnosis Regression';
+activityDescription = 'CMC Covariate analysis and Regrsison of AD Diagnosis of aligned effective counts with GRCh38 with CQN normalisation (ACC)';
+thisFileName <- 'CMC_DataProcessing.Rmd'
+# Github link
+thisRepo <- githubr::getRepo(repository = "jgockley62/TWAS", ref="branch", refName='master')
+thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thisFileName))
+```
+
+### Store files in synapse
+```{r synapse.store, include=FALSE, eval=TRUE, cache=FALSE}
+activityName = 'ACC Validation';
+activityDescription = 'CMC Validation of Imputed Expression';
+CODE <- syn_temp$store(synapseclient$Folder(name = "ACC Validation", parentId = parentId))
+
+#Set Used SynIDs For Provenance
+#Syns_Used <- c("")
+
+# Set annotations
+all.annotations = list(
+  dataType = 'mRNA',
+  dataSubType = 'TWAS',
+  summaryLevel = 'Correlation',
+  assay	 = 'TWAS imputation',
+  tissueTypeAbrv	= NULL, 
+  study = 'CMC', 
+  organism = 'HomoSapiens',
+  consortium	= 'CMC',
+  normalizationStatus	= TRUE,
+  normalizationType	= 'CQN',
+  rnaquantification = 'RSEM',
+  genomeAssemblyID = 'GRCh37'
+)
+
+# Store results
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='DLPFC_Val.eps', name = 'DLPFC Correlation vs PValue', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$tissueTypeAbrv = 'DLPFC'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
+  
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='DLPFC_Cor_All.eps', name = 'DLPFC Correlation Distributions', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$tissueTypeAbrv = 'DLPFC'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
+  
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='DLPFC_Cor_gt5Perc.eps', name = 'DLPFC Sig Correlation Distributions', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$tissueTypeAbrv = 'DLPFC'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
+  
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='DLPFC_Val.eps', name = 'DLPFC Correlation vs PValue', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$tissueTypeAbrv = 'ACC'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
+  
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ACC_Cor_All.eps', name = 'ACC Correlation Distributions', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$tissueTypeAbrv = 'ACC'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
+  
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ACC_Cor_gt5Perc.eps', name = 'ACC Sig Correlation Distributions', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$tissueTypeAbrv = 'ACC'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
+  
+```
+
+### R Source Code
+[Github](`r thisFile`)
+
+```{r knitmd, eval=FALSE, cache=FALSE, include=FALSE}
+reticulate::use_python("/usr/bin/python", required = TRUE)
+synapseclient <- reticulate::import("synapseclient")
+syn_temp <- synapseclient$Synapse()
+syn_temp$login()
+
+setwd("~/TWAS/code/")
+source("~/TWAS/utilityFunctions/knitfile2synapseClient.R")
+source("~/TWAS/utilityFunctions/hook_synapseMdSyntax_plot.R")
+createAndKnitToFolderEntityClient(file = "CMC_Validation.Rmd",
+                                          parentId ="syn18936948",
+                                          folderName = 'ACC Validation')
+```
