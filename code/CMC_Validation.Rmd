@@ -286,7 +286,7 @@ ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='DLPFC_Cor_gt5Perc.eps',
   all.annotations$tissueTypeAbrv = 'DLPFC'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
   
-ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='DLPFC_Val.eps', name = 'DLPFC Correlation vs PValue', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ACC_Val.eps', name = 'ACC Correlation vs PValue', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
   all.annotations$tissueTypeAbrv = 'ACC'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
   
