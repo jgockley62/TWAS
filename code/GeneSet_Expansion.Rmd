@@ -1,0 +1,927 @@
+---
+title: "GeneSet_Expansion"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# Source modified utility functions from limma and sva package
+source("~/TWAS/code/utilityFunctions/Parallel_vbsrBootstrap.R")
+library(parallel)
+library(doParallel)
+library(spike)
+library(reshape2)
+
+source('~/TWAS/utilityFunctions/parallelDuplicateCorrelation.R')
+source('~/TWAS/utilityFunctions/irwsva.build.R')
+source('~/TWAS/utilityFunctions/f.pvalue.R')
+library(biomaRt)
+
+knitr::opts_chunk$set(
+  echo=FALSE,
+  warning=FALSE,
+  message=FALSE,
+  error = FALSE,
+  tidy = FALSE,
+  cache = TRUE)
+```
+
+## Load in Regions and build genesets from BioMart
+```{r Load}
+Regions <- read.table( file='../Reference_Files/Gene_Hit_Regions.bed', header=F, sep='\t')
+
+Regions[ c("TREM2", "CD2AP", "MTCH2", "EED", "APOC1"), ]$V2<-Regions[ c("TREM2", "CD2AP", "MTCH2", "EED", "APOC1"), ]$V2+500000
+Regions[ c("TREM2", "CD2AP", "MTCH2", "EED", "APOC1"), ]$V3<-Regions[ c("TREM2", "CD2AP", "MTCH2", "EED", "APOC1"), ]$V3-500000
+
+mart <- useMart("ensembl", host="grch37.ensembl.org", dataset = "hsapiens_gene_ensembl")
+#mart <- useMart(biomart = "ENSEMBL_MART_ENSEMBL", host = "jul2019.archive.ensembl.org", dataset = "hsapiens_gene_ensembl")
+#mart <- useMart(biomart = "ENSEMBL_MART_ENSEMBL", dataset = "hsapiens_gene_ensembl")
+
+row.names(Regions) <- Regions$V4
+
+Candidates <- list()
+for( name in as.character(Regions$V4) ){
+  filterlist <- paste0( Regions[ name, ]$V1, ':', Regions[ name, ]$V2, ':', Regions[ name, ]$V3 )
+
+  ## Query biomart
+  eval(parse(text= paste0( 'Candidates$', name, ' <- getBM(attributes = c(\'ensembl_gene_id\', 
+                                        \'hgnc_symbol\', 
+                                        \'chromosome_name\', 
+                                        \'start_position\', 
+                                        \'end_position\'),
+                        filters = c(\'chromosomal_region\'), 
+                        values = filterlist,
+                        mart = mart)'
+  )))
+}
+
+for( name in as.character(Regions$V4) ){
+  eval(parse(text= paste0( 'Candidates$', name, ' <- Candidates$', name, '[ (Candidates$', name, '$hgnc_symbol == \'\') == F, ]' )))
+}
+```
+
+## Expand Target List
+```{r Expand, echo=FALSE}
+
+reticulate::use_python("/usr/bin/python", required = TRUE)
+synapseclient <- reticulate::import("synapseclient")
+syn_temp <- synapseclient$Synapse()
+syn_temp$login()
+
+#SynIDs of expression data to pull from
+ExpressionDS <- c('syn21292041','syn21285564','syn21285564','syn21285564','syn21285564','syn21291908')
+names( ExpressionDS ) <- c( 'DLPFC', 'FP', 'IFG', 'PHG', 'STG', 'TCX')
+
+#Study ID Translator
+Study <- c( 'RosMap', 'Mayo', 'MSBB', 'MSBB', 'MSBB', 'MSBB')
+names(Study) <- c('DLPFC', 'TCX', 'FP', 'IFG', 'PHG', 'STG')
+
+Syn <- list('DLPFC', 'TCX', 'FP', 'IFG', 'PHG', 'STG')
+
+Partials <- list()
+
+library(parallel)
+library(doParallel)
+#detach("package:doParallel", unload=TRUE)
+#detach("package:parallel", unload=TRUE)
+cores <- detectCores()-2 
+cl <- makePSOCKcluster(cores)
+registerDoParallel(cl)
+
+mark <- Sys.time()
+for( name in as.character(Regions$V4) ){
+ #for( Tissue in names(ExpressionDS)){
+ for( Tissue in c('FP','TCX')){
+  message(paste0("Working on: ", Tissue))
+  #Tissue<-'DLPFC'
+
+  #Load expression for tissue
+  exp <- read.table(syn_temp$get(as.character(ExpressionDS[Tissue]))$path, header =T, sep ='\t', row.names=1)
+  colnames( exp ) <- gsub( "X", "", colnames( exp ) )
+  #Seperate exp by tissue
+  if( Tissue == 'DLPFC'){
+  }else{
+    if( Tissue == 'TCX' | Tissue == 'CBE' ){
+      if( Tissue == 'CBE' ){
+        slec <- 'CER'
+      }else{ slec <- 'TCX' }
+      colnames( exp ) <- gsub( "TC", "TCX", colnames( exp ) )
+      exp <- exp[ , grepl( slec, colnames(exp)) ]
+    }else{
+      if( Tissue %in% c('FP', 'IFG', 'PHG', 'STG') ){
+        Meta <- read.table( syn_temp$get('syn21285520')$path, header =T, sep ='\t', row.names=1 )
+        exp <- exp[ colnames(exp) %in% row.names(Meta[grepl( Tissue, Meta$Tissue.Diagnosis),])]
+      }else{
+        stop(paste0("ERROR: SOURCE=Config.yaml Issue=Tissue: ", Tissue," is improper must be one of: CBE, DLPFC, FP, IFG, PHG, STG, TCX"))
+      }
+    }
+  }
+  
+  #Impute svalues for given gene-patient NA values
+  exp <- exp[rowSums(is.na(exp))<ncol(exp), ]
+  
+  foo <- bcv::impute.svd( t(exp) )
+  Exp <- foo$x
+  row.names(Exp) <- row.names(t(exp)) 
+  colnames(Exp) <- colnames(t(exp)) 
+  
+  #Prep for partial correlation detection
+  Final <- data.frame()
+  
+  source("~/TWAS/code/utilityFunctions/Parallel_vbsrBootstrap.R")
+  #Run Partial correlations for each gene
+  
+  RUNNe <- function( i=i, x=Exp ){ 
+    library(parallel)
+    library(doParallel)
+    source("~/TWAS/code/utilityFunctions/Parallel_vbsrBootstrap.R")
+    OBS <- i
+    y <- as.matrix(x[,OBS]) 
+    colnames(y) <- i
+    X <- x[,(colnames(x) %in% OBS) == F ]
+    att <- pvbsrBootstrap( y=y, x=X, nsamp=100, cores=1 )
+    names( att ) <- gsub( "intercept", OBS, names(att) )
+    att <- c( 'SeedGene' = OBS, att[ colnames(x) ]) 
+    return( att[c( 'SeedGene', colnames(x) )] )
+    #return(eval(parse( text = paste( c( OBS,att[colnames(x)]), sep='\t') )))
+  }
+  
+  LIST <- eval( parse( text= paste0( 'Candidates$',name,'$ensembl_gene_id' )))  
+  LIST  <- LIST[ (LIST %in% colnames(Exp) ) ==T ]
+  
+  mark <- Sys.time()
+    foo <- t( parApply(cl, as.matrix( LIST[1:length(LIST)] ), 1, RUNNe, Exp) )
+  message( paste0( Sys.time()-mark )) 
+  
+  eval(parse(text=paste0( 'Partials$', name, '$', Tissue, '<- foo' )))
+  
+  message(paste0( "Finished Tissue: ", Tissue, ' For Gene: ', name ))
+ }
+  message(paste0( "Completed All Tissues Finished Seed Gene: ", name ))
+}
+mark-Sys.time()
+#sink<-Partials
+
+```
+```{r SDcutOff }
+library(doParallel)
+library(parallel)
+
+#Core Correlation:
+Narrow <- list()
+
+#Filter out un-named genes:
+for( Gene in names(Candidates)){
+  eval(parse(text=paste0( 'Candidates$', Gene, ' <- Candidates$', Gene, '[ (Candidates$', Gene, '$hgnc_symbol == \'\' )==F, ]' )))
+}
+
+
+Trans  <- c("ENSG00000095970", "ENSG00000198087", "ENSG00000109919", "ENSG00000074266", "ENSG00000130208", "ENSG00000103550")
+names(Trans) <- c("TREM2", "CD2AP", "MTCH2", "EED", "APOC1", 'KNOP1')
+
+
+#Find Partials to Nominated Target gene:
+##Filter out un-named genes (Wont work in Enrichr):
+for( Gene in names(Candidates) ){
+  for( Tissue in names(Study) ){
+    eval(parse(text=paste0( 'Candidates$', Gene, '$', Tissue, ' <- NA')))
+    eval(parse(text=paste0( 'row.names( Candidates$', Gene, ') <- Candidates$', Gene, '$ensembl_gene_id')))
+    
+    for( G in eval(parse(text=paste0( 'Candidates$', Gene, '$ensembl_gene_id' ))) ){
+      #[\'', G ,'\' ]
+      
+      eval(parse(text=paste0( 'Temp <- Partials$', Gene , '$', Tissue, '[ Partials$', Gene , '$', Tissue, '[,\'SeedGene\'] == \'', Trans[Gene],'\',]' )))
+      if( (G %in% names( Temp ))==TRUE){
+        eval(parse(text=paste0( 'Candidates$', Gene, '[ \'',G,'\',\'', Tissue, '\'] <- as.numeric(Temp[\'',G,'\'])' )))
+      }else{}
+    
+    }
+  }
+}
+
+#Average Partial Correlation to Nominated Target accross the 6 tissues
+for( Gene in names(Candidates) ){
+  eval(parse(text=paste0( 'Candidates$', Gene,'$MEAN <- apply( Candidates$', Gene,'[,c(\'DLPFC\', \'TCX\', \'FP\', \'IFG\', \'PHG\', \'STG\')], 1, mean)')))
+}
+
+for( Gene in names(Partials)){
+  eval(parse(text=paste0( 'Narrow$', Gene, ' <- vector()' )))
+  #OK#_eval(parse(text=paste0( 'Keepz <- Candidates$', Gene, '[ Candidates$', Gene, '$MEAN > 0.01, ]' )))
+
+  #OK#_eval(parse(text=paste0( 'Keepz <- Candidates$', Gene, '[ Candidates$', Gene, '$MEAN > 0.004, ]' )))
+  eval(parse(text=paste0( 'Keepz <- Candidates$', Gene, '[ Candidates$', Gene, '$MEAN > 0.1, ]' )))
+  #eval(parse(text=paste0( 'Keepz <- Candidates$', Gene, '[ Candidates$', Gene, '$MEAN > 0.002, ]' )))
+  Keepz <- Keepz[ complete.cases(Keepz),]
+  Keeps <- Keepz$ensembl_gene_id
+  
+  for(Tissue in names( ExpressionDS ) ){
+    eval(parse(text=paste0( 'Tarz <- colnames(Partials$', Gene,'$', Tissue,')[ colnames(Partials$', Gene,'$', Tissue,') %in% Keeps]')))
+    
+    #eval(parse(text=paste0('TarENS <- Candidates$', Gene, '[ Candidates$', Gene, '$hgnc_symbol == \'', Gene, '\' ,]$ensembl_gene_id' )))
+    eval(parse(text=paste0( 'Lookup <- Partials$', Gene,'$', Tissue, '[ Partials$', Gene,'$', Tissue, '[,\'SeedGene\'] == \'', Tarz, '\', Tarz ]' )))
+     
+    eval(parse(text=paste0( 'Narrow$', Gene, ' <- c( Narrow$', Gene, ', names( Lookup))' )))
+  }
+  eval(parse(text=paste0( 'Narrow$', Gene, ' <- Narrow$', Gene, '[ !duplicated(Narrow$', Gene, ')]' )))
+}
+
+##Isolate Narrow Partials Or not.. 
+NewPartials <- list()
+for( Gene in names(Partials)){
+  eval(parse(text=paste0( 'NewPartials$', Gene, ' <- list()' )))
+  for(Tissue in names( ExpressionDS ) ){
+    eval(parse(text=paste0('NewPartials$', Gene, '$', Tissue, ' <-  Partials$', Gene, '$', Tissue, '[ Partials$', Gene, '$', Tissue, '[,\'SeedGene\'] %in% Narrow$', Gene, ', ]')))
+    #eval(parse(text=paste0('NewPartials$', Gene, '$', Tissue, ' <- Partials$', Gene, '$', Tissue)))
+  }
+}
+
+####Only keep genes with all 6 tissue correlations
+for( Gene in names(NewPartials)){
+  if( is.matrix( eval(parse(text=paste0('NewPartials$', Gene, '$', Tissue ))) ) ){
+    eval(parse(text=paste0( 'foo <- c( NewPartials$', Gene, '$DLPFC[,\'SeedGene\'], NewPartials$', Gene, '$TCX[,\'SeedGene\'], NewPartials$', Gene, '$FP[,\'SeedGene\'], NewPartials$', Gene, '$IFG[,\'SeedGene\'], NewPartials$', Gene, '$STG[,\'SeedGene\'], NewPartials$', Gene, '$PHG[,\'SeedGene\'])')))
+  }else{
+    eval(parse(text=paste0( 'foo <- c( NewPartials$', Gene, '$DLPFC[\'SeedGene\'], NewPartials$', Gene, '$TCX[\'SeedGene\'], NewPartials$', Gene, '$FP[\'SeedGene\'], NewPartials$', Gene, '$IFG[\'SeedGene\'], NewPartials$', Gene, '$STG[\'SeedGene\'], NewPartials$', Gene, '$PHG[\'SeedGene\'])')))
+  }
+  foo <- foo[ !duplicated(foo) ]
+  Tib <- rep(0, length(foo))
+  names(Tib) <- foo
+
+  for(Tissue in names( ExpressionDS ) ){
+    if( is.matrix( eval(parse(text=paste0('NewPartials$', Gene, '$', Tissue ))) ) ){
+      eval(parse(text=paste0( 'Tib[ NewPartials$', Gene, '$', Tissue, '[ ,\'SeedGene\' ]] <- Tib[ NewPartials$', Gene, '$', Tissue, '[ ,\'SeedGene\' ]] + 1')))
+    }else{
+      eval(parse(text=paste0( 'Tib[ NewPartials$', Gene, '$', Tissue, '[ \'SeedGene\' ]] <- as.numeric( Tib[ NewPartials$', Gene, '$', Tissue, '[ \'SeedGene\' ]]) + 1')))
+    }
+  }
+  for(Tissue in names( ExpressionDS ) ){
+      if( is.matrix( eval(parse(text=paste0('NewPartials$', Gene, '$', Tissue ))) ) ){
+        eval(parse(text=paste0( 'NewPartials$', Gene, '$', Tissue, '<- NewPartials$', Gene, '$', Tissue, '[ NewPartials$', Gene, '$', Tissue, '[ ,\'SeedGene\' ] %in% names(Tib[Tib>3]),]')))
+      }else{
+        eval(parse(text=paste0( 'NewPartials$', Gene, '$', Tissue, ' <- NewPartials$', Gene, '$', Tissue, '[ NewPartials$', Gene, '$', Tissue, '[ \'SeedGene\' ] %in% names(Tib[Tib>3])]')))
+        eval(parse(text=paste0( 'NewPartials$', Gene, '$', Tissue, ' <- t(as.matrix( NewPartials$', Gene, '$', Tissue, '))')))
+      }
+  }
+} 
+
+Cuts <- matrix(0, 101,6)
+colnames( Cuts ) <- names(Partials)
+row.names( Cuts ) <-  seq( from=0, to=10, by=.1 ) 
+
+mark<-Sys.time()
+#_#Target <- list()
+Y <- foreach( i=row.names( Cuts ), .combine=rbind ) %dopar% {
+  Tar <- vector()
+  Target <- list()
+  for( Gene in names(NewPartials)){
+  #_#eval(parse(text=paste0( 'Target$', Gene, ' <- vector()' )))
+  #foreach( i=row.names( Cuts ), .combine=rbind ) %dopar% {
+    #_#
+    eval(parse(text=paste0( 'Target$', Gene, ' <- vector()' )))
+    #_#
+    for( Tissue in eval(parse(text=paste0( 'names(NewPartials$', Gene, ')'  ))) ){
+      Temp <- eval(parse(text=paste0( 'NewPartials$', Gene, '$', Tissue )))
+  
+      if( dim(Temp)[1] > 1 ){
+        row.names(Temp) <- Temp[, 'SeedGene']
+        Temp <- as.data.frame( Temp[ ,(colnames(Temp) %in% 'SeedGene') == F ] )
+        Temp[] <- lapply(Temp, function(x) as.numeric(as.character(x)))
+      }else{
+        #row.names(Temp) <- as.character( Temp[, 'SeedGene'] )
+        Cs<-as.character( Temp[, 'SeedGene'] )
+        Temp <- as.data.frame( Temp[ ,(colnames(Temp) %in% 'SeedGene') == F ] )
+        Rs <- row.names(Temp)
+        Temp <- data.table::transpose(Temp)
+        row.names(Temp) <- Cs
+        colnames(Temp) <- Rs
+        
+        Temp[] <- lapply(Temp, function(x) as.numeric(as.character(x)))
+      }
+  
+      for( RName in row.names(Temp) ){
+        Selct <- Temp[ RName, Temp[ RName, ]>0 ]
+        Vals <- as.vector( as.numeric(as.character( Selct[ 1 , Selct[1,] < 1 ] ) ))
+        Vals <- c( Vals, -1*Vals )
+        M <- mean( Vals )
+        S <- sd( Vals )
+        Lim <- M+as.numeric(i)*S
+        Adds <- colnames( Selct[ , Selct > Lim ] )
+        #Throw in any genes with more than 1 Parital corelation to the core set
+       # if( dim(Temp)[1] > 1){
+       #   Adds <- c(Adds, names(Temp[, colSums(Temp != 0) > 2 ]) )
+        #  Adds <- Adds[ !duplicated(Adds) ]
+        #}
+        eval(parse(text=paste0( 'Target$', Gene, ' <- c(Target$', Gene, ', Adds)'  )))
+      }
+    }
+    #Log Gene Lengths
+    
+    
+  } 
+  for(Ok in names(NewPartials)){
+      eval(parse(text=paste0( 'LENG <-length(Target$', Ok, '[!duplicated(Target$', Ok, ')])'  )))
+      eval(parse(text=paste0(  'Tar <- c(Tar, ',  LENG,')')))
+  }
+    names(Tar) <- names(NewPartials)
+    Extra <- 'StDevs'
+    eval(parse(text=paste0(  'Tar[\'', Extra, '\'] <- ',  i)))
+    return( Tar )
+}
+Sys.time()-mark
+#Narrow_sink <- Y
+data.table::fwrite(Y, file='NarrowPartial_Expanded_Numbers.csv', row.names=F, col.names=T)
+
+APOC1_Names <- list()
+for(Tissue in names(NewPartials$APOC1) ){
+  eval(parse(text=paste0('foo <- NewPartials$APOC1$', Tissue)))
+  row.names( foo ) <- foo[,'SeedGene']
+  foo <- foo[ , (colnames(foo) %in% 'SeedGene') == F ]
+  foo <- as.data.frame(foo)
+  foo[] <- lapply(foo, function(x) as.numeric(as.character(x)))
+
+  Count <- do.call( rbind, lapply(foo, function(x){ length(which(x==0))/length(x)}))
+  eval(parse(text=paste0('APOC1_Names$',Tissue ,' <- names(Count[ Count < 0.76,])')))
+}
+
+foo <- c( APOC1_Names$DLPFC, APOC1_Names$TCX, APOC1_Names$FP, APOC1_Names$IFG, APOC1_Names$STG, APOC1_Names$PHG )
+length( foo )
+
+poo <- names( table(foo)[table(foo)>1] )
+moo <-   NewPartials$APOC1$DLPFC[,"SeedGene"]     
+      
+PLOT_y <- reshape::melt(as.data.frame(Y), id=c("StDevs") )
+colnames(PLOT_y) <- c( "StDevs", "Seed Gene", "value" )
+library(ggplot2)
+
+
+###Should I Look only at genes correlated with target gene??
+
+#10% of the targets remaining at the second Standard Deviation
+CutoffVal <- round( Y[18,1:6]/10 )
+LIN <- rep(0, length(names(CutoffVal)))
+names(LIN) <- names(CutoffVal)
+for(tar in names(CutoffVal)){
+  eval(parse(text=paste0( 'LIN[\'', tar, '\'] <- Y[ Y[,\'', tar, '\'] < CutoffVal[tar], ][1,\'StDevs\']')))
+}
+
+LIN <- as.data.frame(LIN)
+LIN$`Seed Gene` <- row.names(LIN)
+LIN$LIN <-c( 1, 1, 1, 1, 1, 1 )
+LIN$LIN <- c( 1.4, 1.5, 0.4, 1.1,1.1,1.5)
+
+g <- ggplot( data=PLOT_y, aes( x=StDevs, y=value, col=`Seed Gene`)) + 
+  geom_point() + 
+  geom_line() +
+  geom_vline(data = LIN, aes(xintercept = LIN, col=`Seed Gene`),linetype='dashed' ) +
+  ylab("Partially Correlated Genes Included") +
+  xlab("Standard Deviation Cutoff")
+
+ggsave(g, file="Cutoffs.eps", device="eps")
+system('synapse store --parentid syn21590299 --name Partial_Correlation_Decay Cutoffs.eps')
+g
+
+###Find Top 200 Targets:
+REF <- c( 1.0, 1.3, 1.7, 1.7, 2.2, 2.2  )
+names( REF ) <- names(NewPartials)
+ 
+
+Target <- list()
+for( Gene in names(NewPartials)){
+  eval(parse(text=paste0( 'Target$', Gene, ' <- vector()' )))
+  for( Tissue in eval(parse(text=paste0( 'names(NewPartials$', Gene, ')'  ))) ){
+    Temp <- eval(parse(text=paste0( 'NewPartials$', Gene, '$', Tissue )))
+    Rs <- Temp[,'SeedGene']
+    row.names(Temp) <- Temp[, 'SeedGene']
+    Temp <- as.data.frame( Temp[ ,(colnames(Temp) %in% 'SeedGene') == F ] )
+    Temp[] <- lapply(Temp, function(x) as.numeric(as.character(x)))
+     #Selct <- Temp[ RName, Temp[ RName, ]>0 ]
+    if( dim(Temp)[2] > 1 ){
+      
+    }else{
+      Cs<-row.names(Temp)
+      Temp <- data.table::transpose(Temp)
+      row.names(Temp) <- Rs
+      colnames(Temp) <- Cs
+    }
+    for( RName in row.names(Temp) ){
+     
+      Selct <- Temp[ RName, Temp[ RName, ]>0 ]
+
+      Vals <- as.vector( as.numeric(as.character( Selct[ 1 , Selct[1,] < 1 ] ) ))
+      Vals <- c( Vals, -1*Vals )
+      M <- mean( Vals )
+      S <- sd( Vals )
+      #Lim <- M + as.numeric( LIN[ Gene,]$LIN )*S
+      FIND <- Y[ ,c(Gene,"StDevs")][ Y[ ,c(Gene,"StDevs")][,1] > 200, ]
+      SDs <- FIND[ dim(FIND)[1], 2]
+      
+      #if( Gene %in% c( "TREM2")){
+        #SDs <- 0.7
+      #}else{
+        #if( Gene %in% c( 'APOC1')){
+          #SDs <- 1.7
+        #}else{
+          #SDs <- 1.3
+        #}
+      #}
+      if( Gene %in% c( "EED")){
+        SDs <- 0.5
+      }else{
+        if( Gene %in% c( "KNOP1")){
+          SDs <- 0.8
+        }else{
+          if( Gene %in% c( 'MTCH2') ){
+            #SDs <- 0.5
+            SDs <- 0.4
+            #SDs <- 1.5
+          }else{
+            if( Gene %in% c( 'TREM2')){
+              SDs <- 1.4
+            }else{
+              SDs <- 1.5
+            }
+          }
+        }
+      }
+      Lim <- M + SDs*S
+      Adds <- colnames( Selct[ , Selct > Lim ] )
+      eval(parse(text=paste0( 'Target$', Gene, ' <- c(Target$', Gene, ', Adds)'  )))
+    }
+  }
+}
+
+for( RName in names(Target) ){
+   eval(parse(text=paste0( 'Target$', RName, ' <- Target$', RName, '[!duplicated(Target$', RName, ')]'  )))
+}
+
+#```
+#```{r EnrichR}
+
+library(enrichR)
+dbs <- listEnrichrDbs()
+
+dbs <- c("GO_Molecular_Function_2018", 
+         "WikiPathways_2019_Human",
+         "GO_Cellular_Component_2018",
+         "GO_Biological_Process_2018") #, "ProteomicsDB_2020", "KEGG_2019_Human", "DSigDB","TRRUST_Transcription_Factors_2019")
+
+mart <- useMart("ensembl", host="grch37.ensembl.org", dataset = "hsapiens_gene_ensembl")
+
+TargetGN <- list()
+ENRICH <- list()
+
+TG <- getBM(filters = 'ensembl_gene_id', attributes = c('ensembl_gene_id', 'hgnc_symbol'), values = Total_Genes, mart = mart)
+TG <- TG[ TG$ensembl_gene_id !='ENSG00000265354',] 
+TG$Tot <- paste0( TG$ensembl_gene_id, '_', TG$hgnc_symbol )
+TG <- TG[ !duplicated(TG$Tot), ]
+TG <- TG[ TG$hgnc_symbol != "", ]
+row.names(TG) <- TG$hgnc_symbol
+
+Locked_TG <- as.data.frame(TG$hgnc_symbol)
+Locked_TG$Included <- 0
+names(Locked_TG) <- c( "Gene", "Included" )
+Locked_TG$Gene <- as.character( Locked_TG$Gene ) 
+row.names(Locked_TG) <- Locked_TG$Gene
+
+Locked_TG <- Locked_TG[ Locked_TG$Gene != 'NA', ]
+
+for( G in names(Target)){
+  eval(parse(text=paste0( 'Genes <- getBM(filters = \'ensembl_gene_id\', attributes = c(\'ensembl_gene_id\', \'hgnc_symbol\'), values = Target$', G, ', mart = mart)' )))
+  
+  GN <- Genes[ (Genes$hgnc_symbol %in% "") ==F,]$hgnc_symbol
+  eval(parse(text=paste0('TargetGN$', G, ' <-  Genes[ (Genes$hgnc_symbol %in% "") ==F,]$hgnc_symbol')))
+  
+  eval(parse(text=paste0('Locked_TG[TargetGN$', G, ',]$Included <- 1')))
+  #foo<- enrichr(Locked_TG, dbs)
+  eval(parse(text=paste0('ENRICH$', G, ' <-  enrichr( Locked_TG[ Locked_TG$Included ==1,]$Gene, dbs)')))
+  
+  Locked_TG$Included <- 0
+}
+#TMP <- enrichr( GN, dbs)
+for( G in names(Target)){
+  for( version in dbs ){
+    eval(parse(text=paste0( 'temp <- ENRICH$', G, '$', version )))
+    temp <- temp[ temp$Adjusted.P.value < 0.05, ]
+    eval(parse(text=paste0( 'ENRICH$', G, '$', version, ' <- temp' )))
+  }
+} 
+
+```
+```{r clusterP}
+library( clusterProfiler )
+library(enrichplot)
+
+organism = "org.Hs.eg.db"
+BiocManager::install(organism, character.only = TRUE)
+library(organism, character.only = TRUE)
+library(DOSE)
+
+Enrich_PLOTS <- list()
+for( G in names(Target)){
+  
+  eval(parse(text=paste0( 'Genes <- getBM(filters = \'ensembl_gene_id\', attributes = c(\'ensembl_gene_id\', \'hgnc_symbol\'), values = Target$', G, ', mart = mart)' )))
+  
+  GN <- Genes[ (Genes$hgnc_symbol %in% "") ==F,]$hgnc_symbol
+eval(parse(text=paste0('TargetGN$', G, ' <-  Genes[ (Genes$hgnc_symbol %in% "") ==F,]$hgnc_symbol')))
+  
+  eval(parse(text=paste0('Locked_TG[TargetGN$', G, ',]$Included <- 1')))
+  
+  eval(parse(text=paste0( 'Genes <- getBM(filters = \'ensembl_gene_id\', attributes = c(\'ensembl_gene_id\', \'hgnc_symbol\', \'entrezgene_id\'), values = Target$', G, ', mart = mart)' )))
+
+  Locked_TG$Gene
+
+  #sample_test <- enrichGO( Genes$entrezgene_id, OrgDb=organism, pvalueCutoff=1, qvalueCutoff=1)
+
+  Locked_TG$ENSG <- TG[ Locked_TG$Gene, ]$ensembl_gene_id
+  gene.df <- bitr( Locked_TG$ENSG, fromType = "ENSEMBL", toType = c("ENSEMBL", "SYMBOL", "ENTREZID"), OrgDb = org.Hs.eg.db)
+  gene.df$Tot <- paste0( gene.df$ENSEMBL, "_", gene.df$SYMBOL, "_", gene.df$ENTREZID )
+  #'select()' returned 1:many mapping between keys and columns
+  #1.91% of input gene IDs are fail to map...
+
+  Gsubset <- eval(parse(text=paste0('Target$', G )))
+  Gsubset <- Gsubset[ Gsubset %in% gene.df$ENSEMBL ]
+  ego <- enrichGO(gene          = Gsubset,
+                universe      = gene.df$ENSEMBL,
+                OrgDb         = org.Hs.eg.db,
+                #keyType       = 'SYMBOL',
+                keyType       = 'ENSEMBL',
+                ont           = "ALL",
+                pAdjustMethod = "BH",
+                pvalueCutoff  = 0.01,
+                qvalueCutoff  = 0.05
+              )
+  if( dim(summary(ego))[1] >1 ){
+    eval(parse(text=paste0( 'Enrich_PLOTS$', G, ' <- list()')))
+    eval(parse(text=paste0( 'Enrich_PLOTS$', G, '$Dot <- clusterProfiler::dotplot(ego, x = "GeneRatio", showCategory=30)' )))
+    eval(parse(text=paste0( 'Enrich_PLOTS$', G, '$Net <- cnetplot(ego, foldChange=NULL)' )))
+    eval(parse(text=paste0( 'Enrich_PLOTS$', G, '$Erich <- enrichplot::emapplot(ego, showCategory = 10)' )))
+  }else{}
+}
+
+```
+
+
+```{r CellTypeSpecificity}
+Lake <- read.csv( file=syn_temp$get('syn21563069')$path, header = T )
+Lake <- as.data.frame( data.table::fread( file=syn_temp$get('syn21563069')$path ) )
+
+Total_Genes <- c( colnames( Partials$TREM2$DLPFC ),
+                  colnames( Partials$TREM2$FP ),
+                  colnames( Partials$TREM2$IFG ),
+                  colnames( Partials$TREM2$PHG ),
+                  colnames( Partials$TREM2$STG ),
+                  colnames( Partials$TREM2$TCX )
+)
+#Take only genes in all expression sets:
+Total_Genes <- names(table(Total_Genes)[ table(Total_Genes) == 6])                  
+Total_Genes <- Total_Genes[ (Total_Genes == 'SeedGene') == F ]
+
+mart <- useMart("ensembl", host="grch37.ensembl.org", dataset = "hsapiens_gene_ensembl")
+genes <- Lake$Gene
+Lake_genes <- getBM(filters = 'hgnc_symbol', attributes = c('ensembl_gene_id', 'hgnc_symbol'), values = genes, mart = mart)
+Lake_genes$Tot <- paste0( Lake_genes$ensembl_gene_id, "_", Lake_genes$hgnc_symbol )
+Lake_genes <- Lake_genes[ !duplicated(Lake_genes$Tot), ]
+row.names(Lake_genes) <- Lake_genes$ensembl_gene_id
+
+#filter for Lake Et. Al genes in RNA-Seq
+Lake_genes <- Lake_genes[ Lake_genes$ensembl_gene_id %in% Total_Genes,]
+#row.names(Lake_genes) <- Lake_genes$hgnc_symbol
+
+#TIMM23B entry Mis-named ENSG as TIMM23:
+Lake_genes[ Lake_genes$Tot == 'ENSG00000265354_TIMM23B', ]$ensembl_gene_id <- "ENSG00000204152"
+Lake_genes[ Lake_genes$Tot == 'ENSG00000265354_TIMM23B', ]$Tot <- "ENSG00000204152_TIMM23B"
+Lake_genes <- Lake_genes[ !duplicated(Lake_genes$Tot), ]
+row.names(Lake_genes) <- Lake_genes$hgnc_symbol
+
+#Add ENSGs to Lake data:
+Lake$ENSG <- Lake_genes[ Lake$Gene, ]$ensembl_gene_id
+
+#Throw out Lake Genes not able to be translated: 4.74%
+Lake <- Lake[grepl('ENSG', Lake$ENSG)==T,]
+
+#Cell_type ENSG List
+CellTypeGenes <- list()
+for( Name in names(table(Lake$Cluster)) ){
+  eval(parse(text=paste0( 'CellTypeGenes$', Name, ' <- Lake[ Lake$Cluster == \'', Name,'\',]$ENSG' )))
+}
+
+#Re-Define Partial Cor Gene Sets:
+GSE_Target <- list()
+for( Gene in names(NewPartials)){
+  eval(parse(text=paste0( 'GSE_Target$', Gene, ' <- vector()' )))
+  for( Tissue in eval(parse(text=paste0( 'names(NewPartials$', Gene, ')'  ))) ){
+    Temp <- eval(parse(text=paste0( 'NewPartials$', Gene, '$', Tissue )))
+    Rs <- Temp[,'SeedGene']
+    row.names(Temp) <- Temp[, 'SeedGene']
+    Temp <- as.data.frame( Temp[ ,(colnames(Temp) %in% 'SeedGene') == F ] )
+    Temp[] <- lapply(Temp, function(x) as.numeric(as.character(x)))
+     #Selct <- Temp[ RName, Temp[ RName, ]>0 ]
+    if( dim(Temp)[2] > 1 ){
+      
+    }else{
+      Cs<-row.names(Temp)
+      Temp <- data.table::transpose(Temp)
+      row.names(Temp) <- Rs
+      colnames(Temp) <- Cs
+    }
+    for( RName in row.names(Temp) ){
+     
+      Selct <- Temp[ RName, Temp[ RName, ]>0 ]
+
+      Vals <- as.vector( as.numeric(as.character( Selct[ 1 , Selct[1,] < 1 ] ) ))
+      Vals <- c( Vals, -1*Vals )
+      M <- mean( Vals )
+      S <- sd( Vals )
+      #Lim <- M + as.numeric( LIN[ Gene,]$LIN )*S
+      FIND <- Y[ ,c(Gene,"StDevs")][ Y[ ,c(Gene,"StDevs")][,1] > 200, ]
+      SDs <- FIND[ dim(FIND)[1], 2]
+      if( Gene %in% c( "TREM2")){
+        SDs <- 0.7
+      }else{
+        if( Gene %in% c( 'APOC1')){
+          SDs <- 1.7
+        }else{
+          SDs <- 1.3
+        }
+      }
+      Lim <- M + SDs*S
+      Adds <- colnames( Selct[ , Selct > Lim ] )
+      eval(parse(text=paste0( 'GSE_Target$', Gene, ' <- c(GSE_Target$', Gene, ', Adds)'  )))
+    }
+  }
+}
+
+# Cell Type enrichment by binomial test:
+Actuals_Pval <- as.data.frame( matrix( 0, length( names(GSE_Target) ), length( names(CellTypeGenes) )) )
+colnames(Actuals_Pval) <- names(CellTypeGenes) 
+row.names(Actuals_Pval) <- names(GSE_Target)
+Actuals_OR <- Actuals_Pval
+
+for( G in names(GSE_Target)){
+  eval(parse(text=paste0( 'N <- length( GSE_Target$', G, ')')))
+  eval(parse(text=paste0( 'Genes <- GSE_Target$', G )))
+  Genes <- Genes[ (Genes %in% Total_Genes) == T ]
+  #Calc Actual Overlap
+  for( CT in colnames(Actuals_Pval) ){
+    #eval(parse(text=paste0( 'Actuals[ \'', G,'\',\'', CT,'\'] <- as.numeric( table( Genes %in% CellTypeGenes$', CT, ')[\'TRUE\'])')))
+    eval(parse(text=paste0( 'Perc <- length(CellTypeGenes$', CT, ')/length( Total_Genes )')))
+    eval(parse(text=paste0( 'Emp_Perc <- as.numeric( table( Genes %in% CellTypeGenes$', CT, ')[\'TRUE\'])/length( Genes )')))
+    
+    if( length( eval(parse(text=paste0('table(Genes %in% CellTypeGenes$', CT, ')' ))) ) > 1 ){ 
+      eval(parse(text=paste0( 'N <- as.numeric( table( Genes %in% CellTypeGenes$', CT, ')[\'TRUE\'])' )))
+      eval(parse(text=paste0( 'SIZE <- length( CellTypeGenes$', CT, ')' )))
+      
+      Foo <- binom.test( x=N, n=SIZE, p=Perc, alternative = c("two.sided") )
+      #Poo <- prop.test(x=N, n=SIZE, p=Perc, alternative = "two.sided", correct = TRUE)
+      
+      if( Emp_Perc > Perc ){
+        OR <- Emp_Perc/Perc
+      }else{
+        OR <- -1*( Perc/Emp_Perc )
+      }
+      #Foo$p.value
+      
+      eval(parse(text=paste0( 'Actuals_Pval[ \'', G,'\',\'', CT,'\'] <- Foo$p.value')))
+      eval(parse(text=paste0( 'Actuals_OR[ \'', G,'\',\'', CT,'\'] <- OR')))
+    }else{
+      Emp_Perc <- 0
+      eval(parse(text=paste0( 'N <- 0' )))
+      eval(parse(text=paste0( 'SIZE <- length( CellTypeGenes$', CT, ')' )))
+      
+      Foo <- binom.test( N, SIZE, Perc )
+      if( Emp_Perc == 0){
+        OR <- NA
+      }else{
+        if( Emp_Perc > Perc ){
+          OR <- Emp_Perc/Perc
+        }else{
+          OR <- -1*( Perc/Emp_Perc )
+        }
+      }
+      eval(parse(text=paste0( 'Actuals_Pval[ \'', G,'\',\'', CT,'\'] <- Foo$p.value')))
+      eval(parse(text=paste0( 'Actuals_OR[ \'', G,'\',\'', CT,'\'] <- OR')))
+    }
+  }
+  Leng <- dim( Actuals_Pval )[2]
+  eval(parse(text=paste0( 'Actuals_Pval[ \'', G, '\', ] <- p.adjust(Actuals_Pval[ \'', G, '\', ], method = \'fdr\', n = ', Leng,' )' )))
+}
+
+test_labels <- Actuals_Pval
+test_labels[ test_labels< 0.05] <- "*"
+test_labels[ test_labels > 0.05] <- ""
+
+
+lin <- LIN
+lin$LIN <- c( 0.7, 1.3,1.3,1.3,1.3,1.7 )
+gG <- ggplot( data=PLOT_y, aes( x=StDevs, y=value, col=`Seed Gene`)) + 
+  geom_point() + 
+  geom_line() +
+  geom_vline(data = lin, aes(xintercept = LIN, col=`Seed Gene`),linetype='dashed' ) +
+  ylab("Partially Correlated Genes Included") +
+  xlab("Standard Deviation Cutoff")
+
+gG
+
+
+library(RColorBrewer)
+library(grDevices)
+cols <- colorRampPalette(c( "deepskyblue4", "darkslategray2", "white", "darkgoldenrod2", "red"))(100)
+
+Lake_HeatMap <- pheatmap::pheatmap( as.matrix(Actuals_OR), col=cols, cluster_cols=F, 
+                    display_numbers = test_labels, fontsize_number=40)
+
+setEPS()
+postscript( 'LakeHeatMap.eps' )
+  pheatmap::pheatmap( as.matrix(Actuals_OR), col=cols, cluster_cols=F, display_numbers = test_labels, fontsize_number=40)
+dev.off()
+
+```
+```{r CellTypeSpecificity_Mathys}
+Mathy <- read.csv( file=syn_temp$get('syn21785650')$path, header = T )
+#Mathy <- as.data.frame( data.table::fread( file=syn_temp$get('syn21563069')$path ) )
+
+Total_Genes <- c( colnames( Partials$TREM2$DLPFC ),
+                  colnames( Partials$TREM2$FP ),
+                  colnames( Partials$TREM2$IFG ),
+                  colnames( Partials$TREM2$PHG ),
+                  colnames( Partials$TREM2$STG ),
+                  colnames( Partials$TREM2$TCX )
+)
+#Take only genes in all expression sets:
+Total_Genes <- names(table(Total_Genes)[ table(Total_Genes) == 6])                  
+Total_Genes <- Total_Genes[ (Total_Genes == 'SeedGene') == F ]
+
+mart <- useMart("ensembl", host="grch37.ensembl.org", dataset = "hsapiens_gene_ensembl")
+genes <- Mathy$gene.name
+Mathy_genes <- getBM(filters = 'hgnc_symbol', attributes = c('ensembl_gene_id', 'hgnc_symbol'), values = genes, mart = mart)
+
+Mathy_genes$Tot <- paste0( Mathy_genes$ensembl_gene_id, "_", Mathy_genes$hgnc_symbol )
+Mathy_genes <- Mathy_genes[ !duplicated(Mathy_genes$Tot), ]
+row.names(Mathy_genes) <- Mathy_genes$ensembl_gene_id
+
+#filter for Mathys Et. Al genes in RNA-Seq
+Mathy_genes <- Mathy_genes[ Mathy_genes$ensembl_gene_id %in% Total_Genes,]
+row.names(Mathy_genes) <- Mathy_genes$hgnc_symbol
+
+#Add ENSGs to Lake data:
+Mathy$ENSG <- Mathy_genes[ Mathy$gene.name, ]$ensembl_gene_id
+
+#Throw out Mathys Genes not able to be translated: 3.78%
+Mathy <- Mathy[grepl('ENSG', Mathy$ENSG)==T,]
+
+#Cell_type ENSG List
+CellTypeGenes <- list()
+for( Name in names(table(Mathy$subpopulation)) ){
+  eval(parse(text=paste0( 'CellTypeGenes$', Name, ' <- Mathy[ Mathy$subpopulation == \'', Name,'\',]$ENSG' )))
+}
+
+#Re-Define Partial Cor Gene Sets:
+GSE_Target <- list()
+for( Gene in names(NewPartials)){
+  eval(parse(text=paste0( 'GSE_Target$', Gene, ' <- vector()' )))
+  for( Tissue in eval(parse(text=paste0( 'names(NewPartials$', Gene, ')'  ))) ){
+    Temp <- eval(parse(text=paste0( 'NewPartials$', Gene, '$', Tissue )))
+    Rs <- Temp[,'SeedGene']
+    row.names(Temp) <- Temp[, 'SeedGene']
+    Temp <- as.data.frame( Temp[ ,(colnames(Temp) %in% 'SeedGene') == F ] )
+    Temp[] <- lapply(Temp, function(x) as.numeric(as.character(x)))
+     #Selct <- Temp[ RName, Temp[ RName, ]>0 ]
+    if( dim(Temp)[2] > 1 ){
+      
+    }else{
+      Cs<-row.names(Temp)
+      Temp <- data.table::transpose(Temp)
+      row.names(Temp) <- Rs
+      colnames(Temp) <- Cs
+    }
+    for( RName in row.names(Temp) ){
+     
+      Selct <- Temp[ RName, Temp[ RName, ]>0 ]
+
+      Vals <- as.vector( as.numeric(as.character( Selct[ 1 , Selct[1,] < 1 ] ) ))
+      Vals <- c( Vals, -1*Vals )
+      M <- mean( Vals )
+      S <- sd( Vals )
+      #Lim <- M + as.numeric( LIN[ Gene,]$LIN )*S
+      FIND <- Y[ ,c(Gene,"StDevs")][ Y[ ,c(Gene,"StDevs")][,1] > 200, ]
+      SDs <- FIND[ dim(FIND)[1], 2]
+      if( Gene %in% c( "TREM2")){
+        SDs <- 0.7
+      }else{
+        if( Gene %in% c( 'APOC1')){
+          SDs <- 1.7
+        }else{
+          SDs <- 1.3
+        }
+      }
+      Lim <- M + SDs*S
+      Adds <- colnames( Selct[ , Selct > Lim ] )
+      eval(parse(text=paste0( 'GSE_Target$', Gene, ' <- c(GSE_Target$', Gene, ', Adds)'  )))
+    }
+  }
+}
+
+# Cell Type enrichment by binomial test:
+Actuals_Pval <- as.data.frame( matrix( 0, length( names(GSE_Target) ), length( names(CellTypeGenes) )) )
+colnames(Actuals_Pval) <- names(CellTypeGenes) 
+row.names(Actuals_Pval) <- names(GSE_Target)
+Actuals_OR <- Actuals_Pval
+
+for( G in names(GSE_Target)){
+  eval(parse(text=paste0( 'N <- length( GSE_Target$', G, ')')))
+  eval(parse(text=paste0( 'Genes <- GSE_Target$', G )))
+  Genes <- Genes[ (Genes %in% Total_Genes) == T ]
+  #Calc Actual Overlap
+  for( CT in colnames(Actuals_Pval) ){
+    #eval(parse(text=paste0( 'Actuals[ \'', G,'\',\'', CT,'\'] <- as.numeric( table( Genes %in% CellTypeGenes$', CT, ')[\'TRUE\'])')))
+    eval(parse(text=paste0( 'Perc <- length(CellTypeGenes$', CT, ')/length( Total_Genes )')))
+    eval(parse(text=paste0( 'Emp_Perc <- as.numeric( table( Genes %in% CellTypeGenes$', CT, ')[\'TRUE\'])/length( Genes )')))
+    
+    if( length( eval(parse(text=paste0('table(Genes %in% CellTypeGenes$', CT, ')' ))) ) > 1 ){ 
+      eval(parse(text=paste0( 'N <- as.numeric( table( Genes %in% CellTypeGenes$', CT, ')[\'TRUE\'])' )))
+      eval(parse(text=paste0( 'SIZE <- length( CellTypeGenes$', CT, ')' )))
+      
+      Foo <- binom.test( x=N, n=SIZE, p=Perc, alternative = c("two.sided") )
+      #Poo <- prop.test(x=N, n=SIZE, p=Perc, alternative = "two.sided", correct = TRUE)
+      
+      if( Emp_Perc > Perc ){
+        OR <- Emp_Perc/Perc
+      }else{
+        OR <- -1*( Perc/Emp_Perc )
+      }
+      #Foo$p.value
+      
+      eval(parse(text=paste0( 'Actuals_Pval[ \'', G,'\',\'', CT,'\'] <- Foo$p.value')))
+      eval(parse(text=paste0( 'Actuals_OR[ \'', G,'\',\'', CT,'\'] <- OR')))
+    }else{
+      Emp_Perc <- 0
+      eval(parse(text=paste0( 'N <- 0' )))
+      eval(parse(text=paste0( 'SIZE <- length( CellTypeGenes$', CT, ')' )))
+      
+      Foo <- binom.test( N, SIZE, Perc )
+      if( Emp_Perc == 0){
+        OR <- NA
+      }else{
+        if( Emp_Perc > Perc ){
+          OR <- Emp_Perc/Perc
+        }else{
+          OR <- -1*( Perc/Emp_Perc )
+        }
+      }
+      eval(parse(text=paste0( 'Actuals_Pval[ \'', G,'\',\'', CT,'\'] <- Foo$p.value')))
+      eval(parse(text=paste0( 'Actuals_OR[ \'', G,'\',\'', CT,'\'] <- OR')))
+    }
+  }
+  Leng <- dim( Actuals_Pval )[2]
+  eval(parse(text=paste0( 'Actuals_Pval[ \'', G, '\', ] <- p.adjust(Actuals_Pval[ \'', G, '\', ], method = \'fdr\', n = ', Leng,' )' )))
+}
+
+test_labels <- Actuals_Pval
+test_labels[ test_labels< 0.05] <- "*"
+test_labels[ test_labels > 0.05] <- ""
+
+
+lin <- LIN
+lin$LIN <- c( 0.7, 1.3,1.3,1.3,1.3,1.7 )
+Mathys_G <- ggplot( data=PLOT_y, aes( x=StDevs, y=value, col=`Seed Gene`)) + 
+  geom_point() + 
+  geom_line() +
+  geom_vline(data = lin, aes(xintercept = LIN, col=`Seed Gene`),linetype='dashed' ) +
+  ylab("Partially Correlated Genes Included") +
+  xlab("Standard Deviation Cutoff")
+
+Mathys_G
+
+
+setEPS()
+postscript( 'STDEV_Cutoff.eps' )
+  Mathys_G
+dev.off()
+
+
+
+#Actuals_OR <- Actuals_OR[colSums(!is.na(Actuals_OR)) > 1]
+Actuals_OR[is.na(Actuals_OR)] <- 0
+test_labels <- test_labels[ , colnames(Actuals_OR)]
+
+
+makeColorRampPalette <- function(colors, cutoff.fraction, num.colors.in.palette)
+{
+  stopifnot(length(colors) == 4)
+  ramp1 <- colorRampPalette(colors[1:2])(num.colors.in.palette * cutoff.fraction)
+  ramp2 <- colorRampPalette(colors[3:4])(num.colors.in.palette * (1 - cutoff.fraction))
+  return(c(ramp1, ramp2))
+}
+
+library(RColorBrewer)
+library(grDevices)
+cols <- colorRampPalette(c("navyblue", "deepskyblue4", "darkslategray2", "white", "darkgoldenrod2", "red"))(100)
+
+Mathys_HeatMap <- pheatmap::pheatmap( as.matrix(Actuals_OR), col=cols, cluster_cols=F, display_numbers = test_labels, fontsize_number=40)
+
+
+setEPS()
+postscript( 'MathysHeatMap.eps' )
+  pheatmap::pheatmap( as.matrix(Actuals_OR), col=cols, cluster_cols=F, display_numbers = test_labels, fontsize_number=40)
+dev.off()
+
+```
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
