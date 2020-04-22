@@ -29,17 +29,20 @@ knitr::opts_chunk$set(
 ```{r Load}
 Regions <- read.table( file='../Reference_Files/Gene_Hit_Regions.bed', header=F, sep='\t')
 
-Regions[ c("TREM2", "CD2AP", "MTCH2", "EED", "APOC1"), ]$V2<-Regions[ c("TREM2", "CD2AP", "MTCH2", "EED", "APOC1"), ]$V2+500000
-Regions[ c("TREM2", "CD2AP", "MTCH2", "EED", "APOC1"), ]$V3<-Regions[ c("TREM2", "CD2AP", "MTCH2", "EED", "APOC1"), ]$V3-500000
+row.names(Regions) <- Regions$V4
+
+Regions[ c("TREM2", "CD2AP", "MTCH2", "EED", "APOC1","CEACAM19","CLPTM1"), ]$V2 <- Regions[ c("TREM2", "CD2AP", "MTCH2", "EED", "APOC1","CEACAM19","CLPTM1"), ]$V2+500000
+Regions[ c("TREM2", "CD2AP", "MTCH2", "EED", "APOC1","CEACAM19","CLPTM1"), ]$V3<-Regions[ c("TREM2", "CD2AP", "MTCH2", "EED", "APOC1","CEACAM19","CLPTM1"), ]$V3-500000
 
 mart <- useMart("ensembl", host="grch37.ensembl.org", dataset = "hsapiens_gene_ensembl")
 #mart <- useMart(biomart = "ENSEMBL_MART_ENSEMBL", host = "jul2019.archive.ensembl.org", dataset = "hsapiens_gene_ensembl")
 #mart <- useMart(biomart = "ENSEMBL_MART_ENSEMBL", dataset = "hsapiens_gene_ensembl")
 
-row.names(Regions) <- Regions$V4
+#row.names(Regions) <- Regions$V4
 
 Candidates <- list()
 for( name in as.character(Regions$V4) ){
+  
   filterlist <- paste0( Regions[ name, ]$V1, ':', Regions[ name, ]$V2, ':', Regions[ name, ]$V3 )
 
   ## Query biomart
@@ -90,7 +93,7 @@ registerDoParallel(cl)
 mark <- Sys.time()
 for( name in as.character(Regions$V4) ){
  #for( Tissue in names(ExpressionDS)){
- for( Tissue in c('FP','TCX')){
+ for( Tissue in names(ExpressionDS) ){
   message(paste0("Working on: ", Tissue))
   #Tissue<-'DLPFC'
 
@@ -175,8 +178,8 @@ for( Gene in names(Candidates)){
 }
 
 
-Trans  <- c("ENSG00000095970", "ENSG00000198087", "ENSG00000109919", "ENSG00000074266", "ENSG00000130208", "ENSG00000103550")
-names(Trans) <- c("TREM2", "CD2AP", "MTCH2", "EED", "APOC1", 'KNOP1')
+Trans  <- c("ENSG00000095970", "ENSG00000198087", "ENSG00000109919", "ENSG00000074266", "ENSG00000130208", "ENSG00000103550", "ENSG00000186567", "ENSG00000104853")
+names(Trans) <- c("TREM2", "CD2AP", "MTCH2", "EED", "APOC1", 'KNOP1', "CEACAM19", "CLPTM1")
 
 
 #Find Partials to Nominated Target gene:
@@ -262,7 +265,7 @@ for( Gene in names(NewPartials)){
   }
 } 
 
-Cuts <- matrix(0, 101,6)
+Cuts <- matrix(0, 101,length(names(Partials)))
 colnames( Cuts ) <- names(Partials)
 row.names( Cuts ) <-  seq( from=0, to=10, by=.1 ) 
 
@@ -355,7 +358,7 @@ library(ggplot2)
 ###Should I Look only at genes correlated with target gene??
 
 #10% of the targets remaining at the second Standard Deviation
-CutoffVal <- round( Y[18,1:6]/10 )
+CutoffVal <- round( Y[18,1:8]/10 )
 LIN <- rep(0, length(names(CutoffVal)))
 names(LIN) <- names(CutoffVal)
 for(tar in names(CutoffVal)){
@@ -364,8 +367,8 @@ for(tar in names(CutoffVal)){
 
 LIN <- as.data.frame(LIN)
 LIN$`Seed Gene` <- row.names(LIN)
-LIN$LIN <-c( 1, 1, 1, 1, 1, 1 )
-LIN$LIN <- c( 1.4, 1.5, 0.4, 1.1,1.1,1.5)
+#LIN$LIN <-c( 1, 1, 1, 1, 1, 1 )
+LIN$LIN <- c( 0.7, 1.3, 1.3, 1.3, 1.3, 1.7, 1.3, 1.3)
 
 g <- ggplot( data=PLOT_y, aes( x=StDevs, y=value, col=`Seed Gene`)) + 
   geom_point() + 
@@ -375,13 +378,12 @@ g <- ggplot( data=PLOT_y, aes( x=StDevs, y=value, col=`Seed Gene`)) +
   xlab("Standard Deviation Cutoff")
 
 ggsave(g, file="Cutoffs.eps", device="eps")
-system('synapse store --parentid syn21590299 --name Partial_Correlation_Decay Cutoffs.eps')
+system('synapse store --parentid syn21818446 --name Partial_Correlation_Decay Cutoffs.eps')
 g
 
 ###Find Top 200 Targets:
-REF <- c( 1.0, 1.3, 1.7, 1.7, 2.2, 2.2  )
+REF <- c( 0.7, 1.3, 1.3, 1.3, 1.3, 1.7, 1.3, 1.3 )
 names( REF ) <- names(NewPartials)
- 
 
 Target <- list()
 for( Gene in names(NewPartials)){
@@ -468,6 +470,17 @@ mart <- useMart("ensembl", host="grch37.ensembl.org", dataset = "hsapiens_gene_e
 TargetGN <- list()
 ENRICH <- list()
 
+Total_Genes <- c( colnames( Partials$TREM2$DLPFC ),
+                  colnames( Partials$TREM2$FP ),
+                  colnames( Partials$TREM2$IFG ),
+                  colnames( Partials$TREM2$PHG ),
+                  colnames( Partials$TREM2$STG ),
+                  colnames( Partials$TREM2$TCX )
+)
+#Take only genes in all expression sets:
+Total_Genes <- names(table(Total_Genes)[ table(Total_Genes) == 6])                  
+Total_Genes <- Total_Genes[ (Total_Genes == 'SeedGene') == F ]
+
 TG <- getBM(filters = 'ensembl_gene_id', attributes = c('ensembl_gene_id', 'hgnc_symbol'), values = Total_Genes, mart = mart)
 TG <- TG[ TG$ensembl_gene_id !='ENSG00000265354',] 
 TG$Tot <- paste0( TG$ensembl_gene_id, '_', TG$hgnc_symbol )
@@ -506,55 +519,215 @@ for( G in names(Target)){
 
 ```
 ```{r clusterP}
+
+parentId = 'syn18936948';
+activityName = 'Gene Set Enrichment';
+activityDescription = 'Figure 4: gene set enrichment of genes implicated in TWAS regions';
+thisFileName <- 'GeneSet_Expansion.Rmd'
+# Github link
+thisRepo <- githubr::getRepo(repository = "jgockley62/TWAS", ref="branch", refName='master')
+thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thisFileName))
+
+CODE <- syn_temp$store(synapseclient$Folder(name = "Gene Set Enrichment Plots", parentId = parentId))
+
 library( clusterProfiler )
 library(enrichplot)
 
-organism = "org.Hs.eg.db"
-BiocManager::install(organism, character.only = TRUE)
-library(organism, character.only = TRUE)
-library(DOSE)
 
-Enrich_PLOTS <- list()
-for( G in names(Target)){
+Enrich_Run <- function( cutoffs ){
+  #'@cutoffs a named vector of SD cutoff valutes for genes
+  SD_Store <- rep(NA,length(names(NewPartials)))
+  names(SD_Store) <- names(NewPartials)
   
-  eval(parse(text=paste0( 'Genes <- getBM(filters = \'ensembl_gene_id\', attributes = c(\'ensembl_gene_id\', \'hgnc_symbol\'), values = Target$', G, ', mart = mart)' )))
+  Target <- list()
+  for( Gene in names(NewPartials)){
+    eval(parse(text=paste0( 'Target$', Gene, ' <- vector()' )))
+    for( Tissue in eval(parse(text=paste0( 'names(NewPartials$', Gene, ')'  ))) ){
+      Temp <- eval(parse(text=paste0( 'NewPartials$', Gene, '$', Tissue )))
+      Rs <- Temp[,'SeedGene']
+      row.names(Temp) <- Temp[, 'SeedGene']
+      Temp <- as.data.frame( Temp[ ,(colnames(Temp) %in% 'SeedGene') == F ] )
+      Temp[] <- lapply(Temp, function(x) as.numeric(as.character(x)))
+       #Selct <- Temp[ RName, Temp[ RName, ]>0 ]
+      if( dim(Temp)[2] > 1 ){
+        
+      }else{
+        Cs<-row.names(Temp)
+        Temp <- data.table::transpose(Temp)
+        row.names(Temp) <- Rs
+        colnames(Temp) <- Cs
+      }
+      for( RName in row.names(Temp) ){
+       
+        Selct <- Temp[ RName, Temp[ RName, ]>0 ]
   
-  GN <- Genes[ (Genes$hgnc_symbol %in% "") ==F,]$hgnc_symbol
-eval(parse(text=paste0('TargetGN$', G, ' <-  Genes[ (Genes$hgnc_symbol %in% "") ==F,]$hgnc_symbol')))
+        Vals <- as.vector( as.numeric(as.character( Selct[ 1 , Selct[1,] < 1 ] ) ))
+        Vals <- c( Vals, -1*Vals )
+        M <- mean( Vals )
+        S <- sd( Vals )
+        #Lim <- M + as.numeric( LIN[ Gene,]$LIN )*S
+        FIND <- Y[ ,c(Gene,"StDevs")][ Y[ ,c(Gene,"StDevs")][,1] > 200, ]
+        SDs <- FIND[ dim(FIND)[1], 2]
+        
+        eval( parse( text = paste0( 'SDs <- cutoffs[\'', Gene,'\']' )))
+        eval( parse( text = paste0( 'SD_Store[\'', Gene,'\'] <- ', SDs )))
+        Lim <- M + SDs*S
+        Adds <- colnames( Selct[ , Selct > Lim ] )
+        eval(parse(text=paste0( 'Target$', Gene, ' <- c(Target$', Gene, ', Adds)'  )))
+      }
+    }
+  }
   
-  eval(parse(text=paste0('Locked_TG[TargetGN$', G, ',]$Included <- 1')))
+  for( RName in names(Target) ){
+     eval(parse(text=paste0( 'Target$', RName, ' <- Target$', RName, '[!duplicated(Target$', RName, ')]'  )))
+  }
   
-  eval(parse(text=paste0( 'Genes <- getBM(filters = \'ensembl_gene_id\', attributes = c(\'ensembl_gene_id\', \'hgnc_symbol\', \'entrezgene_id\'), values = Target$', G, ', mart = mart)' )))
-
-  Locked_TG$Gene
-
-  #sample_test <- enrichGO( Genes$entrezgene_id, OrgDb=organism, pvalueCutoff=1, qvalueCutoff=1)
-
-  Locked_TG$ENSG <- TG[ Locked_TG$Gene, ]$ensembl_gene_id
-  gene.df <- bitr( Locked_TG$ENSG, fromType = "ENSEMBL", toType = c("ENSEMBL", "SYMBOL", "ENTREZID"), OrgDb = org.Hs.eg.db)
-  gene.df$Tot <- paste0( gene.df$ENSEMBL, "_", gene.df$SYMBOL, "_", gene.df$ENTREZID )
-  #'select()' returned 1:many mapping between keys and columns
-  #1.91% of input gene IDs are fail to map...
-
-  Gsubset <- eval(parse(text=paste0('Target$', G )))
-  Gsubset <- Gsubset[ Gsubset %in% gene.df$ENSEMBL ]
-  ego <- enrichGO(gene          = Gsubset,
-                universe      = gene.df$ENSEMBL,
-                OrgDb         = org.Hs.eg.db,
-                #keyType       = 'SYMBOL',
-                keyType       = 'ENSEMBL',
-                ont           = "ALL",
-                pAdjustMethod = "BH",
-                pvalueCutoff  = 0.01,
-                qvalueCutoff  = 0.05
-              )
-  if( dim(summary(ego))[1] >1 ){
-    eval(parse(text=paste0( 'Enrich_PLOTS$', G, ' <- list()')))
-    eval(parse(text=paste0( 'Enrich_PLOTS$', G, '$Dot <- clusterProfiler::dotplot(ego, x = "GeneRatio", showCategory=30)' )))
-    eval(parse(text=paste0( 'Enrich_PLOTS$', G, '$Net <- cnetplot(ego, foldChange=NULL)' )))
-    eval(parse(text=paste0( 'Enrich_PLOTS$', G, '$Erich <- enrichplot::emapplot(ego, showCategory = 10)' )))
-  }else{}
+  organism = "org.Hs.eg.db"
+  #BiocManager::install(organism, character.only = TRUE)
+  library(organism, character.only = TRUE)
+  library(DOSE)
+  
+  Enrich_PLOTS <- list()
+  for( G in names(Target)){
+    
+    
+    eval(parse(text=paste0( 'Genes <- getBM(filters = \'ensembl_gene_id\', attributes = c(\'ensembl_gene_id\', \'hgnc_symbol\'), values = Target$', G, ', mart = mart)' )))
+    
+    GN <- Genes[ (Genes$hgnc_symbol %in% "") ==F,]$hgnc_symbol
+  eval(parse(text=paste0('TargetGN$', G, ' <-  Genes[ (Genes$hgnc_symbol %in% "") ==F,]$hgnc_symbol')))
+    
+    eval(parse(text=paste0('Locked_TG[TargetGN$', G, ',]$Included <- 1')))
+    
+    eval(parse(text=paste0( 'Genes <- getBM(filters = \'ensembl_gene_id\', attributes = c(\'ensembl_gene_id\', \'hgnc_symbol\', \'entrezgene_id\'), values = Target$', G, ', mart = mart)' )))
+  
+    #Locked_TG$Gene
+  
+    #sample_test <- enrichGO( Genes$entrezgene_id, OrgDb=organism, pvalueCutoff=1, qvalueCutoff=1)
+  
+    Locked_TG$ENSG <- TG[ Locked_TG$Gene, ]$ensembl_gene_id
+    gene.df <- bitr( Locked_TG$ENSG, fromType = "ENSEMBL", toType = c("ENSEMBL", "SYMBOL", "ENTREZID"), OrgDb = org.Hs.eg.db)
+    gene.df$Tot <- paste0( gene.df$ENSEMBL, "_", gene.df$SYMBOL, "_", gene.df$ENTREZID )
+    #'select()' returned 1:many mapping between keys and columns
+    #1.91% of input gene IDs are fail to map...
+  
+    Gsubset <- eval(parse(text=paste0('Target$', G )))
+    Gsubset <- Gsubset[ Gsubset %in% gene.df$ENSEMBL ]
+    ego <- enrichGO(gene          = Gsubset,
+                  universe      = gene.df$ENSEMBL,
+                  OrgDb         = org.Hs.eg.db,
+                  #keyType       = 'SYMBOL',
+                  keyType       = 'ENSEMBL',
+                  ont           = "ALL",
+                  pAdjustMethod = "BH",
+                  pvalueCutoff  = 0.01,
+                  qvalueCutoff  = 0.05
+                )
+    
+    eval(parse(text=paste0( 'SD_Used <- as.numeric(cutoffs[\'', G, '\'])' )))
+    if( dim(as.data.frame(ego))[1] >1 ){
+      cluster_summary <- data.frame(ego)
+      write.csv(cluster_summary , file = paste0("EnrichmentResults_", G, "_Stdevs_", SD_Used,".csv"), row.names=FALSE)
+      
+      ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path=paste0("EnrichmentResults_", G, "_Stdevs_", SD_Used,".csv"), name = paste0("EnrichmentResults_", G, "_Stdevs_", SD_Used), parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+      
+      eval(parse(text=paste0( 'Enrich_PLOTS$', G, ' <- list()')))
+      # Dotplot
+      eval(parse(text=paste0( 'Enrich_PLOTS$', G, '$Dot <- clusterProfiler::dotplot(ego, x = "GeneRatio", showCategory=30)' )))
+      pdf(file = paste0("EnrichmentDotPlot_", G, "_Stdevs_", SD_Used,".pdf"), width = 14, height = 7)
+         print( clusterProfiler::dotplot(ego, x = "GeneRatio", showCategory=30) )
+      dev.off()
+  
+      ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path=paste0("EnrichmentDotPlot_", G, "_Stdevs_", SD_Used,".pdf"), name = paste0("EnrichmentDotPlot_", G, "_Stdevs_", SD_Used), parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  
+      # Net Plot
+      eval(parse(text=paste0( 'Enrich_PLOTS$', G, '$Net <- cnetplot(ego, foldChange=NULL)' )))
+      
+      pdf(file = paste0("EnrichmentNetPlot_", G, "_Stdevs_", SD_Used,".pdf"), width = 7, height = 7)
+         print( cnetplot(ego, foldChange=NULL))
+      dev.off()
+      
+      ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path=paste0("EnrichmentNetPlot_", G, "_Stdevs_", SD_Used,".pdf"), name = paste0("EnrichmentNetPlot_", G, "_Stdevs_", SD_Used), parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  
+      # Enrichment Plot
+      eval(parse(text=paste0( 'Enrich_PLOTS$', G, '$Erich <- enrichplot::emapplot(ego, showCategory = 10)' )))
+      
+      pdf(file = paste0("EnrichmentEnrichPlot_", G, "_Stdevs_", SD_Used,".pdf"), width = 7, height = 7)
+        print( enrichplot::emapplot(ego, showCategory = 10) )
+      dev.off()
+      
+      ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path=paste0("EnrichmentEnrichPlot_", G, "_Stdevs_", SD_Used,".pdf"), name = paste0("EnrichmentEnrichPlot_", G, "_Stdevs_", SD_Used,".pdf"), parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  
+    }else{}
+  }
 }
+
+#Run Enrichment at Broad Cutoffs:
+input <- c( TREM2 = 0.8, 
+            CD2AP= 0.8, 
+            MTCH2= 0.8, 
+            EED= 0.8, 
+            KNOP1= 0.8, 
+            APOC1= 0.8,
+            CEACAM19= 0.8,
+            CLPTM1= 0.8
+          )
+Enrich_Run( input )
+
+#Run Enrichment at Narrow Cutoffs:
+input <- c( TREM2 = 2.8, 
+            CD2AP = 2.8, 
+            MTCH2 = 2.8, 
+            EED = 2.8, 
+            KNOP1 = 2.8, 
+            APOC1 = 2.8,
+            CEACAM19= 2.8,
+            CLPTM1= 2.8
+          )
+Enrich_Run( input )
+
+#Run Enrichment at Custom Cutoffs:
+input <- c( TREM2 = 0.8, 
+            #CD2AP = 2, 
+            CD2AP = 1,
+            MTCH2 = 0.4, 
+            EED = 2, 
+            KNOP1 = 2, 
+            APOC1 = 1.7,
+            CEACAM19= 2,
+            CLPTM1= 2
+          )
+Enrich_Run( input )
+#if( Gene %in% c( "TREM2")){
+          #SDs <- 0.7
+          #SDs <- 2.8
+        #}else{
+          #if( Gene %in% c( 'APOC1')){
+            #SDs <- 1.7
+            #SDs <- 2.8
+          #}else{
+            #SDs <- 1.3
+            #SDs <- 2.8
+          #}
+        #}
+        #if( Gene %in% c( "EED")){
+          #SDs <- 0.5
+        #}else{
+          #if( Gene %in% c( "KNOP1")){
+           # SDs <- 0.8
+          #}else{
+            #if( Gene %in% c( 'MTCH2') ){
+              #SDs <- 0.5
+              #SDs <- 0.4
+              #SDs <- 1.5
+            #}else{
+              #if( Gene %in% c( 'TREM2')){
+                #SDs <- 1.4
+              #}else{
+                #SDs <- 1.5
+              #}
+            #}
+          #}
+        #}
 
 ```
 
@@ -710,7 +883,7 @@ test_labels[ test_labels > 0.05] <- ""
 
 
 lin <- LIN
-lin$LIN <- c( 0.7, 1.3,1.3,1.3,1.3,1.7 )
+lin$LIN <- c( 0.7, 1.3,1.3,1.3,1.3,1.7,1.3,1.3 )
 gG <- ggplot( data=PLOT_y, aes( x=StDevs, y=value, col=`Seed Gene`)) + 
   geom_point() + 
   geom_line() +
@@ -728,10 +901,18 @@ cols <- colorRampPalette(c( "deepskyblue4", "darkslategray2", "white", "darkgold
 Lake_HeatMap <- pheatmap::pheatmap( as.matrix(Actuals_OR), col=cols, cluster_cols=F, 
                     display_numbers = test_labels, fontsize_number=40)
 
-setEPS()
-postscript( 'LakeHeatMap.eps' )
-  pheatmap::pheatmap( as.matrix(Actuals_OR), col=cols, cluster_cols=F, display_numbers = test_labels, fontsize_number=40)
-dev.off()
+
+
+save_pheatmap_pdf <- function(x, filename, width=7, height=7) {
+   stopifnot(!missing(x))
+   stopifnot(!missing(filename))
+   pdf(filename, width=width, height=height)
+   grid::grid.newpage()
+   grid::grid.draw(x$gtable)
+   dev.off()
+}
+
+save_pheatmap_pdf(Lake_HeatMap, "Lake_HeatMap.pdf")
 
 ```
 ```{r CellTypeSpecificity_Mathys}
@@ -880,7 +1061,7 @@ test_labels[ test_labels > 0.05] <- ""
 
 
 lin <- LIN
-lin$LIN <- c( 0.7, 1.3,1.3,1.3,1.3,1.7 )
+lin$LIN <- c( 0.7, 1.3,1.3,1.3,1.3,1.7,1.3,1.3 )
 Mathys_G <- ggplot( data=PLOT_y, aes( x=StDevs, y=value, col=`Seed Gene`)) + 
   geom_point() + 
   geom_line() +
@@ -895,8 +1076,6 @@ setEPS()
 postscript( 'STDEV_Cutoff.eps' )
   Mathys_G
 dev.off()
-
-
 
 #Actuals_OR <- Actuals_OR[colSums(!is.na(Actuals_OR)) > 1]
 Actuals_OR[is.na(Actuals_OR)] <- 0
@@ -915,13 +1094,28 @@ library(RColorBrewer)
 library(grDevices)
 cols <- colorRampPalette(c("navyblue", "deepskyblue4", "darkslategray2", "white", "darkgoldenrod2", "red"))(100)
 
+
 Mathys_HeatMap <- pheatmap::pheatmap( as.matrix(Actuals_OR), col=cols, cluster_cols=F, display_numbers = test_labels, fontsize_number=40)
+save_pheatmap_pdf(Mathys_HeatMap, "Mathys_HeatMap.pdf")
 
 
-setEPS()
-postscript( 'MathysHeatMap.eps' )
-  pheatmap::pheatmap( as.matrix(Actuals_OR), col=cols, cluster_cols=F, display_numbers = test_labels, fontsize_number=40)
-dev.off()
+parentId = 'syn18936948';
+activityName = 'Gene Set Enrichment';
+activityDescription = 'Figure 4: gene set enrichment of genes implicated in TWAS regions';
+thisFileName <- 'GeneSet_Expansion.Rmd'
+# Github link
+thisRepo <- githubr::getRepo(repository = "jgockley62/TWAS", ref="branch", refName='master')
+thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thisFileName))
+
+CODE <- syn_temp$store(synapseclient$Folder(name = "Gene Set Enrichment Plots", parentId = parentId))
+
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='STDEV_Cutoff.eps', name = 'StDev Cutoff values of Partial Correlations', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='Lake_HeatMap.pdf', name = 'Lake et.al CellType Specificity', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='Mathys_HeatMap.pdf', name = 'Mathys et.al CellType Specificity', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+ 
+
 
 ```
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

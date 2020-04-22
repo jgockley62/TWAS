@@ -165,9 +165,47 @@ pdf(file = "TWAS_Manhattan.pdf")
     )
 dev.off()
 
+p <- ggplot(don, aes(x=BPcum, y=-log10(TWAS.P))) +
+    
+    #AddSigLine
+    geom_hline(yintercept = -log10( max(Assoc[Assoc$FDR_TWAS.P < 0.05,]$TWAS.P) )) +
+    #p.adjust(7.467145e-06, method='fdr', dim(Assoc)[1] )
+    
+    # Show all points
+    geom_point( aes(color=as.factor(CHR)), alpha=0.8, size=1.3) +
+    scale_color_manual(values = rep(c("grey", "black"), 22 )) +
+    
+    # custom X axis:
+    scale_x_continuous( name="Chromosome", label = axisdf$CHR, breaks= axisdf$center ) +
+    scale_y_continuous(name="-Log10( TWAS Association P-Value )", expand = c(0, 0), limits=c(0,38) ) +     # remove space between plot area and x axis
+    
+    # Add highlighted points
+    geom_point(data = subset(don, is_highlight=="yes"), color="orange", size=2) +
+    geom_point(data = subset(don, is_highlight=="drop"), color="lightslateblue", size=2) +
+    geom_point(data = subset(don, is_highlight=="NS"), color="mediumturquoise", size=2) +
+    
+    # Add label using ggrepel to avoid overlapping
+    geom_label_repel( data=subset(don, is_annotate=="yes"), aes(label=Gene), size=2) +
+    
+    # Custom the theme:
+    theme_bw() +
+    theme( 
+      legend.position="none",
+      panel.border = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank()
+    )
+ggsave("TWAS_Manhattan.eps",p)
+
 pdf(file = "TWAS_qq.pdf")
 qq(Assoc$TWAS.P, bty='n', las=1)
 dev.off()
+
+setEPS()
+postscript("TWAS_qq.eps", onefile = TRUE)
+qq(Assoc$TWAS.P, bty='n', las=1)
+dev.off()
+
 ```
 
 
@@ -206,12 +244,23 @@ all.annotations = list(
 
 #TODO add provenance used = Syns_Used,
 
-# Store SVA results
+# PDFs
 ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='TWAS_Manhattan.pdf', name = 'Twas Gene Association Manhattan Plot', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
   all.annotations$dataSubType = 'Manhattan Plot'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
   
 ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='TWAS_qq.pdf', name = 'Twas Gene Association QQ-Plot', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$dataSubType = 'QQ-Plot'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
+  
+# PDFs
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='TWAS_Manhattan.eps', name = 'Twas Gene Association Manhattan Plot EPS', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$dataType = "eps"
+  all.annotations$dataSubType = 'Manhattan Plot'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
+  
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='TWAS_qq.eps', name = 'Twas Gene Association QQ-Plot EPS', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$dataType = "eps"
   all.annotations$dataSubType = 'QQ-Plot'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
   
