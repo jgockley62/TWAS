@@ -996,7 +996,7 @@ PFC_Plots <- Associated( 'PFC' )
 
 
 #### Imputed Expression Component Validation in DLPFC
-```{r Plot, cache=FALSE, fig.height=10, fig.width=8, results='asis'}
+```{r PlotDLPFC, cache=FALSE, fig.height=10, fig.width=8, results='asis'}
 # Significant after correction for multiple comparisons:
 print(PFC_Plots$TAB)
 
@@ -1012,7 +1012,7 @@ plot(PFC_Plots$Filt)
 
 
 #### Imputed Expression Component Validation in ACC
-```{r Plot, cache=FALSE, fig.height=10, fig.width=8, results='asis'}
+```{r PlotACC, cache=FALSE, fig.height=10, fig.width=8, results='asis'}
 # Significant after correction for multiple comparisons:
 print(ACC_Plots$TAB)
 
