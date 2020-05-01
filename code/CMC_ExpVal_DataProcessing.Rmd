@@ -939,11 +939,26 @@ Associated <- function( Tissue ){
   Tab <- table(Correlation$Sig)
   
   setEPS()
-  postscript( paste0( Tissue, "_Val.eps" ), onefile = TRUE)
-    ggplot( data = Correlation, aes( x = Correlation, y = Log10_Pval, col = Sig ) ) + 
+  #postscript( paste0( Tissue, "_Val.eps" ), onefile = TRUE)
+    #ggplot( data = Correlation, aes( x = Correlation, y = Log10_Pval, col = Sig ) ) + 
+      #geom_point() + ggtitle("Log10( PVal) vs. Correlation" ) + 
+      #theme(plot.title = element_text(hjust = 0.5)) + ylab("-Log( PValue)") 
+  #dev.off()
+  
+  ggsave( filename=Tissue, "_Val.eps",
+    plot = ggplot( data = Correlation, aes( x = Correlation, y = Log10_Pval, col = Sig ) ) + 
       geom_point() + ggtitle("Log10( PVal) vs. Correlation" ) + 
-      theme(plot.title = element_text(hjust = 0.5)) + ylab("-Log( PValue)") 
-  dev.off()
+      theme(plot.title = element_text(hjust = 0.5)) + ylab("-Log( PValue)") ,
+    device = "pdf",
+    path = NULL,
+    scale = 1,
+    width = 14,
+    height = 7,
+    units = "in",
+    dpi = 300,
+    limitsize = TRUE
+  )
+ 
   Sig <- ggplot( data = Correlation, aes( x = Correlation, y = Log10_Pval, col = Sig ) ) + 
       geom_point() + ggtitle("Log10( PVal) vs. Correlation" ) + 
       theme(plot.title = element_text(hjust = 0.5)) + ylab("-Log( PValue)") 
