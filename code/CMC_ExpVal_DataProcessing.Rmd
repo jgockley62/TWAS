@@ -876,15 +876,11 @@ Associated <- function( Tissue ){
   #Exp--
   Exp <- RESIDUAL.SVA.GENE_EXPRESSION #as.data.frame( read.table( syn_temp$get('syn21483472')$path, header = T, sep = '\t', row.names = 1 ))
   rownames(Exp) <- do.call( rbind, strsplit(row.names(Exp),'\\.'))[,1]
-  #_# Exp_ACC <- Exp[ ,(grepl("_ACC_", colnames(Exp)))==T ]
-  #_# Exp_ACC <- Exp[ ,(grepl("_PFC_", colnames(Exp)))==T ]
   Exp_temp <- Exp[ ,(grepl(paste0("_", Tissue, "_"), colnames(Exp)))==T ]
   #ID--
   ID <- read.csv( syn_temp$get('syn21444814')$path, header = T )
   table(colnames(Exp) %in% ID$RNAseq.Sample_RNA_ID )
   
-  #_# colnames(Exp_temp) <- paste0( "CMC_", gsub( "RNA_", "", gsub("_RNA_ACC_", "_", gsub( "ACC_BP_", "", colnames(Exp_temp) ))))
-  #_# colnames(Exp_temp) <- paste0( "CMC_", gsub( "RNA_", "", gsub("_RNA_PFC_", "_", gsub( "PFC_BP_", "", colnames(Exp_temp) ))))
   if( Tissue == 'PFC' ){
     colnames(Exp_temp) <- paste0( "CMC_", gsub( "RNA_", "", gsub("_RNA_PFC_", "_", gsub( "PFC_BP_", "", colnames(Exp_temp) ))))
   }else{
@@ -938,14 +934,7 @@ Associated <- function( Tissue ){
   Correlation[ Correlation$FDR_W_Only < 0.05 & Correlation$Correlation > 0 , ]$Sig <- 'YES'
   Tab <- table(Correlation$Sig)
   
-  setEPS()
-  #postscript( paste0( Tissue, "_Val.eps" ), onefile = TRUE)
-    #ggplot( data = Correlation, aes( x = Correlation, y = Log10_Pval, col = Sig ) ) + 
-      #geom_point() + ggtitle("Log10( PVal) vs. Correlation" ) + 
-      #theme(plot.title = element_text(hjust = 0.5)) + ylab("-Log( PValue)") 
-  #dev.off()
-  
-  ggsave( filename=Tissue, "_Val.eps",
+  ggsave( filename=paste0( Tissue, "_Val.pdf" ),
     plot = ggplot( data = Correlation, aes( x = Correlation, y = Log10_Pval, col = Sig ) ) + 
       geom_point() + ggtitle("Log10( PVal) vs. Correlation" ) + 
       theme(plot.title = element_text(hjust = 0.5)) + ylab("-Log( PValue)") ,
@@ -1080,7 +1069,7 @@ ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='CMC_Diagnosis_Regressed
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
   
 #Upload Plots:
-ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ACC_Val.eps', name = 'LogP value as a function of correlation for ACC', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ACC_Val.pdf', name = 'LogP value as a function of correlation for ACC', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
   all.annotations$tissueTypeAbrv = 'ACC'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
@@ -1091,10 +1080,8 @@ ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ACC_Cor_All.eps', name 
 ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ACC_Cor_gt5Perc.eps', name = 'Histogram of Significant correlation values for ACC', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
   all.annotations$tissueTypeAbrv = 'ACC'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
-
-  
     
-ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='PFC_Val.eps', name = 'LogP value as a function of correlation for DLPFC', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='PFC_Val.pdf', name = 'LogP value as a function of correlation for DLPFC', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
   all.annotations$tissueTypeAbrv = 'DLPFC'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
