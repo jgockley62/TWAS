@@ -1031,7 +1031,7 @@ plot(ACC_Plots$Filt)
 parentId = 'syn18936948';
 activityName = 'Covariate and Diagnosis Regression';
 activityDescription = 'CMC Covariate analysis and Regresison of AD Diagnosis of aligned effective counts with GRCh38 with CQN normalisation';
-thisFileName <- 'CMC_Both_Exp_DataProcessing_V2.Rmd'
+thisFileName <- 'CMC_ExpVal_DataProcessing.Rmd'
 # Github link
 thisRepo <- githubr::getRepo(repository = "jgockley62/TWAS", ref="branch", refName='master')
 thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thisFileName))
