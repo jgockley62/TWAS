@@ -87,7 +87,6 @@ if( all( row.names(ACC_counts) %in% row.names(DLPFC_counts) ) ){
 
 #row.names(counts) <- counts$Geneid #  do.call( rbind, strsplit(counts$Geneid,"[.]") )[,1]
 
-
 # Parse gene lengths
 
 # Get ancestry vector calculated using gemtools
@@ -597,7 +596,7 @@ NOTE:
 ```{r iterative.norm, results='asis'}
 
 # Primary variable of interest
-postAdjustCovars = c('Institution', 'Reported_Gender') #c('Institution', 'Reported_Gender'); #'FlowcellBatch'
+postAdjustCovars = c('Institution', 'Reported_Gender', 'Dx' ) #c('Institution', 'Reported_Gender'); #'FlowcellBatch'
 #postAdjustCovars = c('Institution', 'Reported_Gender');
 # Assign residual covariates
 residualCovars = setdiff(preAdjustedSigCovars$significantCovars, c(postAdjustCovars, primaryVariable, 'Individual_ID'))
@@ -934,6 +933,9 @@ Associated <- function( Tissue ){
   Correlation[ Correlation$FDR_W_Only < 0.05 & Correlation$Correlation > 0 , ]$Sig <- 'YES'
   Tab <- table(Correlation$Sig)
   
+  message( paste0(Tissue, ' Mean Correlatioon: ', mean(Correlation$Correlation)) )
+  message( paste0(Tissue, ' Mean Std. Dev: ', sd(Correlation$Correlation)) )
+  
   ggsave( filename=paste0( Tissue, "_Val.pdf" ),
     plot = ggplot( data = Correlation, aes( x = Correlation, y = Log10_Pval, col = Sig ) ) + 
       geom_point() + ggtitle("Log10( PVal) vs. Correlation" ) + 
@@ -941,8 +943,8 @@ Associated <- function( Tissue ){
     device = "pdf",
     path = NULL,
     scale = 1,
-    width = 21,
-    height = 7,
+    width = 25,
+    height = 8.75,
     units = "in",
     dpi = 300,
     limitsize = TRUE
@@ -1016,6 +1018,99 @@ print("Significant Correlations:")
 plot(ACC_Plots$Filt)
 ```
 
+#### Down Sample the DLPFC to look like ACC
+```{r DownSample, cache=FALSE, fig.height=10, fig.width=8, results='asis'}
+Tissue <- 'PFC'
+  
+Impute <-  as.data.frame( read.table(syn_temp$get('syn21442621')$path, header = T, sep = '\t', row.names = 1 ))
+row.names(Impute)  <- Impute$IID
+Impute <- Impute[ , colnames(Impute)[ (grepl("ENSG", colnames(Impute))) == T ] ]
+Impute <- as.data.frame(t(Impute))
+colnames(Impute) <- gsub( "BP_", "", gsub("0_", "CMC_", colnames(Impute) ))
+  
+#Exp--
+Exp <- RESIDUAL.SVA.GENE_EXPRESSION #as.data.frame( read.table( syn_temp$get('syn21483472')$path, header = T, sep = '\t', row.names = 1 ))
+rownames(Exp) <- do.call( rbind, strsplit(row.names(Exp),'\\.'))[,1]
+Exp_temp <- Exp[ ,(grepl(paste0("_", Tissue, "_"), colnames(Exp)))==T ]
+#ID--
+ID <- read.csv( syn_temp$get('syn21444814')$path, header = T )
+table(colnames(Exp) %in% ID$RNAseq.Sample_RNA_ID )
+  
+if( Tissue == 'PFC' ){
+  colnames(Exp_temp) <- paste0( "CMC_", gsub( "RNA_", "", gsub("_RNA_PFC_", "_", gsub( "PFC_BP_", "", colnames(Exp_temp) ))))
+}else{
+  if( Tissue == 'ACC' ){
+    colnames(Exp_temp) <- paste0( "CMC_", gsub( "RNA_", "", gsub("_RNA_ACC_", "_", gsub( "ACC_BP_", "", colnames(Exp_temp) ))))
+  }else{
+    warning('Inproper Tissue Specified')
+  }
+}
+Exp <- Exp_temp
+#Sync Names
+Padder <- function( names ){
+  #'@names format of 'CMC_PITT_XXXX' ie colnames(Exp)
+  foo <- do.call( rbind, strsplit(names, '_'))
+  foo[,3] <- str_pad(foo[,3], 5, pad = "0")
+  return( paste0(foo[,1], "_", foo[,2], "_", foo[,3] ) )
+}
+colnames(Exp) <- Padder( colnames(Exp) )
+colnames(Impute) <- Padder( colnames(Impute) )
+  
+#Align Matices
+Impute <- Impute[ ,colnames(Impute)[ colnames(Impute) %in% colnames(Exp) ] ]
+Exp <- Exp[ ,colnames(Impute)[ colnames(Impute) %in% colnames(Exp) ] ]
+Impute <- Impute[ row.names(Impute)[ row.names(Impute) %in% row.names(Exp) ] ,]
+Exp <- Exp[ row.names(Impute)[ row.names(Impute) %in% row.names(Exp) ] ,]
+  
+Perm <- function( Exp, Impute ){  
+  Template <- colnames(Exp)[ colnames(Exp) %in% colnames(Impute) ]
+  SAMP <- sample(Template, 381, replace = FALSE, prob = NULL)
+  Impute <- Impute[ , SAMP ]
+  Exp <- Exp[ , SAMP ]
+  
+  Correlation <- matrix(0, dim(Exp)[1], 3)
+  row.names(Correlation) <- row.names(Impute)
+  colnames(Correlation) <- c( "Z", "Correlation", "P-Val")
+  
+  Exp <- Exp[ , colnames(Impute)[colnames(Impute) %in% colnames(Exp)] ]
+  Impute <- Impute[ , colnames(Impute)[colnames(Impute) %in% colnames(Exp)] ]
+  
+  for( Gene in row.names(Impute) ){
+    temp <- na.omit(cbind( as.numeric(Impute[Gene,]), as.numeric(Exp[Gene,]) ))
+    foo <- cor.test( temp[,1], temp[,2] , method = "kendall")
+    Correlation[ Gene, ] <- c( as.numeric(foo$statistic), as.numeric(foo$estimate), as.numeric(foo$p.value) )
+  }
+  
+  Correlation <- cbind( Correlation, "Log10_Pval"= -log10(Correlation[,3]))
+  Correlation <- cbind( Correlation, "FDR"= p.adjust( Correlation[,3], method = "fdr", n = 13650) )
+  Correlation <- cbind( Correlation, "BH"= p.adjust( Correlation[,3], method = "BH", n = 13650) )
+  Correlation <- cbind( Correlation, "BF"= p.adjust( Correlation[,3], method = "bonferroni", n = 13650) )
+  
+  Correlation <- cbind( Correlation, "FDR_W_Only"= p.adjust( Correlation[,3], method = "fdr", n = dim(Correlation)[1]) )
+  Correlation <- cbind( Correlation, "BH_W_Only"= p.adjust( Correlation[,3], method = "BH", n = dim(Correlation)[1]) )
+  Correlation <- cbind( Correlation, "BF_W_Only"= p.adjust( Correlation[,3], method = "bonferroni", n = dim(Correlation)[1]) )
+  
+  Correlation <- as.data.frame(Correlation)
+  Correlation$Sig <- 'NO'
+  Correlation[ Correlation$FDR_W_Only < 0.05 & Correlation$Correlation > 0 , ]$Sig <- 'YES'
+  Tab <- table(Correlation$Sig)
+  return( t(as.data.frame(Tab))['Freq',] )
+}  
+
+set.seed(42)
+P <- 100
+temp <- foreach( i=1:P ) %dopar% Perm( Exp, Impute )
+Ps <- do.call( rbind, temp )
+Ps <- as.data.frame( Ps )
+Ps$V1 <- as.numeric(as.character(Ps$V1))
+Ps$V2 <- as.numeric(as.character(Ps$V2))
+
+MEAN <- mean( Ps[ , 2 ]/(  Ps[ , 2 ] +  Ps[ , 1 ]) )
+print( paste0('Mean Downsampled Validation: ', MEAN ))
+SD <- sd( Ps[ , 2 ]/(  Ps[ , 2 ] +  Ps[ , 1 ]))
+error <- qt(0.975, df=dim(Ps)[1]-1)*sd( Ps[ , 2 ]/(  Ps[ , 2 ] +  Ps[ , 1 ]) )/sqrt( dim(Ps)[1] )
+
+```
 
 ```{r synapse.parameters, include=FALSE, cache=TRUE}
 parentId = 'syn18936948';
@@ -1034,7 +1129,7 @@ activityDescription = 'CMC Covariate analysis and Regrssion of Diagnosis of alig
 CODE <- syn_temp$store(synapseclient$Folder(name = "CMC_Analysis", parentId = parentId))
 
 #Set Used SynIDs For Provenance
-#Syns_Used <- c("")
+Syns_Used <- c('syn21444814', 'syn21442621', 'syn16816490', 'syn16816488', 'syn21156161', 'syn16783596', 'syn16783867', 'syn2511399', 'syn16783557','syn16783508', 'syn16783557' )
 
 # Set annotations
 all.annotations = list(
@@ -1052,11 +1147,9 @@ all.annotations = list(
   genomeAssemblyID = 'GRCh38'
 )
 
-#TODO add provenance used = Syns_Used,
-
 # Store SVA results
 write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CMC_SVA_Diagnosis_Corrected.tsv', sep = '\t', quote=F)
-ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='CMC_SVA_Diagnosis_Corrected.tsv', name = 'Normalised, covariates, surrogate and Diagnosis variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='CMC_SVA_Diagnosis_Corrected.tsv', name = 'Normalised, covariates, surrogate and Diagnosis variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), activityName = activityName, executed = c( Syns_Used, thisFile) , activityDescription = activityDescription)
   all.annotations$dataSubType = 'residualGeneExpForeQTL'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
   
@@ -1064,32 +1157,32 @@ ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='CMC_SVA_Diagnosis_Corre
 RESIDUAL.NET.GENE_EXPRESSION %>%
   rownameToFirstColumn('ensembl_gene_id') %>%
   write.table(file = 'CMC_Diagnosis_Regressed_netResidualExpression.tsv', sep = '\t', row.names=F, quote=F)
-ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='CMC_Diagnosis_Regressed_netResidualExpression.tsv', name = 'Normalised, covariates and Diagnosis removed residual expression (for network analysis)', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='CMC_Diagnosis_Regressed_netResidualExpression.tsv', name = 'Normalised, covariates and Diagnosis removed residual expression (for network analysis)', parentId=CODE$properties$id ), activityName = activityName, executed = c( Syns_Used, thisFile) , activityDescription = activityDescription)
   all.annotations$dataSubType = 'residualGeneExpForNetAnlz'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
   
 #Upload Plots:
-ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ACC_Val.pdf', name = 'LogP value as a function of correlation for ACC', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ACC_Val.pdf', name = 'LogP value as a function of correlation for ACC', parentId=CODE$properties$id ), activityName = activityName, executed = c( Syns_Used, thisFile) , activityDescription = activityDescription)
   all.annotations$tissueTypeAbrv = 'ACC'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
-ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ACC_Cor_All.eps', name = 'Histogram of all correlation values for ACC', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ACC_Cor_All.eps', name = 'Histogram of all correlation values for ACC', parentId=CODE$properties$id ), activityName = activityName, executed = c( Syns_Used, thisFile) , activityDescription = activityDescription)
   all.annotations$tissueTypeAbrv = 'ACC'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
-ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ACC_Cor_gt5Perc.eps', name = 'Histogram of Significant correlation values for ACC', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ACC_Cor_gt5Perc.eps', name = 'Histogram of Significant correlation values for ACC', parentId=CODE$properties$id ), activityName = activityName, executed = c( Syns_Used, thisFile) , activityDescription = activityDescription)
   all.annotations$tissueTypeAbrv = 'ACC'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
     
-ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='PFC_Val.pdf', name = 'LogP value as a function of correlation for DLPFC', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='PFC_Val.pdf', name = 'LogP value as a function of correlation for DLPFC', parentId=CODE$properties$id ), activityName = activityName, executed = c( Syns_Used, thisFile) , activityDescription = activityDescription)
   all.annotations$tissueTypeAbrv = 'DLPFC'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
-ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='PFC_Cor_All.eps', name = 'Histogram of all correlation values for DLPFC', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='PFC_Cor_All.eps', name = 'Histogram of all correlation values for DLPFC', parentId=CODE$properties$id ), activityName = activityName, executed = c( Syns_Used, thisFile) , activityDescription = activityDescription)
   all.annotations$tissueTypeAbrv = 'DLPFC'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
-ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='PFC_Cor_gt5Perc.eps', name = 'Histogram of Significant correlation values for DLPFC', parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='PFC_Cor_gt5Perc.eps', name = 'Histogram of Significant correlation values for DLPFC', parentId=CODE$properties$id ), activityName = activityName, executed = c( Syns_Used, thisFile) , activityDescription = activityDescription)
   all.annotations$tissueTypeAbrv = 'DLPFC'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
