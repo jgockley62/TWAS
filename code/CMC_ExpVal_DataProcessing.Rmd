@@ -788,14 +788,14 @@ VOOM.WEIGHTS = voom(cnts, design=DESIGN$design, plot=F)
 VOOM.WEIGHTS = voom(cnts,
                     design=DESIGN$design, plot=F,
 
-                    block = COVARIATES1$Block, 
+                    block = COVARIATES1$Individual_ID, 
                     correlation = correlation$cor)
 # Fit linear model using new weights and new design
 VOOM.WEIGHTS$E = CQN.GENE_EXPRESSION$E
 FIT = lmFit(VOOM.WEIGHTS$E,
             weights = VOOM.WEIGHTS$weights,
             design = VOOM.WEIGHTS$design[,colnames(VOOM.NET.FIT)],
-            block = COVARIATES1$Block, 
+            block = COVARIATES1$Individual_ID, 
             correlation = correlation$cor)
 
 # Get (null) design matrix
@@ -839,14 +839,14 @@ VOOM.SVA.WEIGHTS = voom(cnts, design=cbind(MODEL1, SURR.VAR), plot=F)
 # Re-estimate voom weights
 VOOM.SVA.WEIGHTS = voom(cnts, 
                         design = cbind(MODEL1, SURR.VAR), plot=F,
-                        block = COVARIATES1$Block, 
+                        block = COVARIATES1$Individual_ID, 
                         correlation = correlation$cor)
 # Fit linear model using new weights and new design
 VOOM.SVA.WEIGHTS$E = CQN.GENE_EXPRESSION$E
 VOOM.SVA.FIT = lmFit(VOOM.SVA.WEIGHTS$E,
                      weights = VOOM.SVA.WEIGHTS$weights,
                      design = VOOM.SVA.WEIGHTS$design,
-                     block = COVARIATES1$Block, 
+                     block = COVARIATES1$Individual_ID, 
                      correlation = correlation$cor)
 # Residuals after normalisation
 RESIDUAL.SVA.GENE_EXPRESSION = residuals.MArrayLM(VOOM.SVA.FIT,
@@ -860,6 +860,7 @@ RESIDUAL.SVA.GENE_EXPRESSION = RESIDUAL.SVA.GENE_EXPRESSION +
 
 ```{r EXP_Val, include=FALSE, eval=TRUE, cache=FALSE}
 ################################################################################
+
 #CMC ACC DATA
 library(stringr)
 
@@ -977,13 +978,13 @@ Associated <- function( Tissue ){
         col = 'grey45',
         las = 1,
         main="Correlation of Genes with FDR Corrected P-Value < 0.05")
-  return(list( TAB=Tab, Sig = Sig, Tot=Total_Hist, Filt=Filt_Hist ))
+  return(list( TAB=Tab, Correlation=Correlation, Sig = Sig, Tot=Total_Hist, Filt=Filt_Hist ))
 }
 
 
 ACC_Plots <- Associated( 'ACC' )
 PFC_Plots <- Associated( 'PFC' )
-
+#save.image('Completed_Validation_Analysis.RData')
 ```
 
 
@@ -1185,6 +1186,10 @@ ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='PFC_Cor_All.eps', name 
 ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='PFC_Cor_gt5Perc.eps', name = 'Histogram of Significant correlation values for DLPFC', parentId=CODE$properties$id ), activityName = activityName, executed = c( Syns_Used, thisFile) , activityDescription = activityDescription)
   all.annotations$tissueTypeAbrv = 'DLPFC'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
+  
+#ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='Completed_Validation_Analysis.RData', name = 'RData object of analysis for ACC Validation', parentId=CODE$properties$id ), activityName = activityName, executed = c( Syns_Used, thisFile) , activityDescription = activityDescription)
+#  all.annotations$tissueTypeAbrv = 'Analysis'
+#  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
 ```
 
