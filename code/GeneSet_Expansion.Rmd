@@ -10,6 +10,8 @@ library(parallel)
 library(doParallel)
 library(spike)
 library(reshape2)
+library(biomaRt)
+library(data.table)
 
 source('~/TWAS/utilityFunctions/parallelDuplicateCorrelation.R')
 source('~/TWAS/utilityFunctions/irwsva.build.R')
@@ -165,6 +167,267 @@ mark-Sys.time()
 #sink<-Partials
 
 ```
+
+```{r Selected, echo=FALSE}
+#Average the partial correlation statistics across the data  frames
+
+GENEs <- NULL
+for( tissue in names(Partials$TREM2) ){
+  GENEs <- eval(parse( text=paste0('c(GENEs, colnames(Partials$TREM2$',tissue,'))') ))
+  GENEs <- GENEs[ !duplicated(GENEs) ]
+}
+
+GENEs <- GENEs[ GENEs != 'SeedGene' ]
+ensembl <- useMart("ENSEMBL_MART_ENSEMBL", host = 'ensembl.org')
+ensembl <- useDataset('hsapiens_gene_ensembl', mart = ensembl)
+
+Top50_Cor <- function( ENSG, Targets, Tissues, Part, ensembl ){
+  #'@ENSG the target gene ID to collect partials on eg. 'ENSG00000095970'
+  #'@Targets a vector of ENSG names to scan eg. GENEs
+  #'@Tissues charater vector of tissues to scan eg. c( "FP", "TCX", "DLPFC", "IFG", "PHG", "STG"  )
+  #'@Part a partial correlation list  eg. Partials$TREM2
+  #'@ensembl ensembl object eg. ensembl
+  
+  Examine <- matrix( NA, length(Targets), length(Tissues)+1 )
+  Examine <- apply(Examine, 2, as.numeric)
+  row.names(Examine) <- Targets
+  colnames(Examine) <- c( Tissues, "Avg" )
+  
+  for( Tis in Tissues ){
+    eval(parse( text= paste0( 'Examine[ colnames(Part$\'', Tis,'\')[ colnames(Part$\'', Tis,'\') !=\'SeedGene\' ],\'', Tis, '\' ]  <- as.numeric( Part$\'', Tis, '\'[ Part$\'', Tis,'\'[ ,\'SeedGene\'] == \'', ENSG, '\' , colnames(Part$\'', Tis,'\') != \'SeedGene\' ])' ) ))
+  }
+    
+  Examine[, 'Avg' ] <- apply( Examine[ , 1:(dim(Examine)[2]-1) ], 1, mean )
+  Examine <- Examine[ order(-Examine[,'Avg']), ] 
+    
+  #message(paste0("1"))  
+  #ensembl <- useMart("ENSEMBL_MART_ENSEMBL", host = 'ensembl.org')
+  #message(paste0("2"))
+  #ensembl <- useDataset('hsapiens_gene_ensembl', mart = ensembl)
+  #message(paste0("3"))
+  gene_ids <- row.names( Examine )[1:50] 
+
+  attrs <- c("ensembl_gene_id", "hgnc_symbol")
+  Trans <- getBM(filters = 'ensembl_gene_id',
+                            attributes = attrs,
+                            values = gene_ids,
+                            mart = ensembl )
+    
+  return( Trans$hgnc_symbol[ Trans$hgnc_symbol != "" ] )
+}
+
+Top50 <- list()
+Top50$Trem <- Top50_Cor( 'ENSG00000095970', GENEs, c( "FP", "TCX", "DLPFC", "IFG", "PHG", "STG"  ), Partials$TREM2, ensembl )
+Top50$CD2AP <- Top50_Cor( 'ENSG00000198087', GENEs, c( "FP", "TCX", "DLPFC", "IFG", "PHG", "STG"  ), Partials$CD2AP, ensembl )
+Top50$MTCH2 <- Top50_Cor( 'ENSG00000109919', GENEs, c( "FP", "TCX", "DLPFC", "IFG", "PHG", "STG"  ), Partials$MTCH2, ensembl )
+Top50$EED <- Top50_Cor( 'ENSG00000074266', GENEs, c( "FP", "TCX", "DLPFC", "IFG", "PHG", "STG"  ), Partials$EED, ensembl )
+Top50$KNOP1 <- Top50_Cor( 'ENSG00000103550', GENEs, c( "FP", "TCX", "DLPFC", "IFG", "PHG", "STG"  ), Partials$KNOP1, ensembl )
+Top50$APOC1 <- Top50_Cor( 'ENSG00000130208', GENEs, c( "FP", "TCX", "DLPFC", "IFG", "PHG", "STG"  ), Partials$APOC1, ensembl )
+Top50$CEACAM19 <- Top50_Cor( 'ENSG00000186567', GENEs, c( "FP", "TCX", "DLPFC", "IFG", "PHG", "STG"  ), Partials$CEACAM19 , ensembl )
+Top50$CLPTM1 <- Top50_Cor( 'ENSG00000104853', GENEs, c( "FP", "TCX", "DLPFC", "IFG", "PHG", "STG"  ), Partials$CLPTM1, ensembl )
+```
+
+```{r SIF_Load, echo=FALSE}
+reticulate::use_python("/usr/bin/python", required = TRUE)
+synapseclient <- reticulate::import("synapseclient")
+syn_temp <- synapseclient$Synapse()
+syn_temp$login( )
+
+SIFs <- c('syn21914055')
+names(SIFs) <- c('All')
+
+#Load and Add names: SIFs
+boot <- function( i ){
+  foo <- read.table( file=syn_temp$get( SIFs[i] )$path , header = F, sep='\t' )
+  foo$Pathway <- as.character( i ) 
+  return(foo)
+}
+
+Loader <- function( SIFs){
+  #'@SIFs An object that has SynID values and named for the database
+  ##  Each Syn ID is a SIF format file 
+  
+  total <- list()
+  Trial <- for( i in names(SIFs) ){
+    temp <- boot( i )
+    #eval(parse(text=paste0( 'total$', as.character(NAMES[i]), ' <- temp' )))
+    total[[i]] <- temp
+  }
+  
+  Total <- do.call(rbind, total)
+  Total <- Total[ , c("V1", "V3", "V2", "Pathway") ]
+  colnames(Total) <- c("from", "to", "interaction", "pathway")
+  
+  #Caluclate how many times this intereactcion was found in all databases:
+  Total$Occurance <- paste0( Total$from, '-', Total$to, ':', Total$interaction )
+  foo <- paste0( Total$from, '-', Total$to, ':', Total$interaction )
+  TabFoo <- table(foo)
+  Total$Occurance <-  as.numeric( TabFoo[ Total$Occurance ] )
+  
+  Genes <- c( as.character(Total$from), as.character(Total$to) )
+  Genes <- Genes[ !duplicated(Genes) ]
+  Genes <- as.data.frame( Genes )
+  
+  #Make the pathway column into a list object
+  #library(dplyr)
+  #library(reshape)
+  
+  
+  Total$UniqCol <- paste0( as.character(Total$from),':', as.character(Total$to),'-', as.character(Total$interaction) )
+  dt <- data.table(Total[, c('UniqCol','pathway')])
+  DT <- dt[,lapply(.SD, function(col) paste(col, collapse=", ")), by=.(UniqCol)]
+  
+  sinl<-DT
+  
+  foo <- as.data.frame( DT )
+  poo <- as.list( strsplit(as.character(foo$pathway),',') )
+  names(poo) <- foo$UniqCol
+  
+  totals <- Total[ !duplicated(Total$UniqCol), ]
+  pathways <- poo
+  
+  table(names(pathways) == as.character(totals$UniqCol))
+  table( as.character(totals$UniqCol) == names(pathways) )
+  
+  totals$PATH <- pathways
+  totals$PATH <- lapply( totals$PATH,
+                 function(x) gsub(" ","", x)
+               )
+  
+  Total <- totals[,c("from", "to", "interaction", "Occurance", "UniqCol", "PATH")]
+  colnames(Total) <- c("from", "to", "interaction", "Occurance", "UniqCol", "pathway")
+  return( Total )
+}
+
+Total <- Loader(SIFs)
+Total$from <- as.character(Total$from)
+Total$to <- as.character(Total$to)
+Total$UniqCol <- as.character(Total$UniqCol)
+dim(Total)
+table(table( Total$UniqCol ))
+#Filter out the :CHEBI
+Total <- Total[ (grepl( ':CHEBI', Total$UniqCol) == F) , ]
+
+#Remove Repeat interactions?
+Total$Partners <- paste0(Total$from, ":", Total$to )
+Total <- Total[ !duplicated(Total$Partners), ]
+
+```
+
+```{r SIF_Expand, echo=FALSE}
+Expand_gt1 <- list()
+Expand_gt2 <- list()
+
+#Convert Brain Expressed to Gene names
+ensembl = useEnsembl(biomart = "ensembl", dataset = "hsapiens_gene_ensembl" )
+GENEsyb <- getBM(attributes = c('hgnc_symbol'), 
+      filters = 'ensembl_gene_id', 
+      values = GENEs, 
+      mart = ensembl)
+
+for( nam in names(Top50) ){
+  genes <- eval(parse(text=paste0( 'Top50$', nam )))
+  Exp <- c( Total[ Total$from %in% genes | Total$to %in% genes, ]$from, 
+            Total[ Total$from %in% genes | Total$to %in% genes, ]$to
+          )
+  
+  #Filt out molecule intereactions and split into conservative and non conservative
+  gt1 <- names( table(Exp)[ table(Exp) > 1 ] )
+  gt1 <- gt1[ grepl( 'CHEBI:', gt1) == F ]
+  gt2 <- names( table(Exp)[ table(Exp) > 2 ] )
+  gt2 <- gt2[ grepl( 'CHEBI:', gt2) == F ]
+  
+  #Filt for brain expressed Genese
+  eval(parse(text=paste0( 'Expand_gt1$', nam, ' = gt1[ gt1 %in% GENEsyb[,\'hgnc_symbol\'] ] ' )))
+  eval(parse(text=paste0( 'Expand_gt2$', nam, ' = gt2[ gt2 %in% GENEsyb[,\'hgnc_symbol\'] ] ' )))
+}
+
+library( clusterProfiler )
+library(enrichplot)
+library(enrichR)
+library(org.Hs.eg.db)
+
+parentId = 'syn18936948';
+activityName = 'Gene Set Enrichment';
+activityDescription = 'Figure 4 & Supplement: gene set enrichment of genes implicated in TWAS regions';
+thisFileName <- 'GeneSet_Expansion.Rmd'
+# Github link
+thisRepo <- githubr::getRepo(repository = "jgockley62/TWAS", ref="branch", refName='master')
+thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thisFileName))
+
+CODE <- syn_temp$store(synapseclient$Folder(name = "Gene Set Enrichment Plots", parentId = parentId))
+
+for( name in names(Expand_gt2)){
+  eval(parse(text=paste0('set <- Expand_gt2$', 'name' )))
+  ego <- enrichGO(gene            = set,
+                    universe      = GENEsyb[,'hgnc_symbol'],
+                    OrgDb         = org.Hs.eg.db,
+                    keyType      = 'SYMBOL',
+                    ont           = "ALL",
+                    pAdjustMethod = "BH",
+                    pvalueCutoff  = 0.01,
+                    qvalueCutoff  = 0.05
+                  )
+  
+  clusterProfiler::dotplot(ego, x = "GeneRatio", showCategory=30)
+  cnetplot(ego, foldChange=NULL)
+  
+  
+  Dot <- clusterProfiler::dotplot(ego, x = "GeneRatio", showCategory=30)
+  Net <- cnetplot(ego, foldChange=NULL)
+  
+  pdf(file = paste0("EnrichmentDotPlot_", name, "_GeneSetSize_", length(set),"_gt2.pdf"), width = 14, height = 7)
+    print( clusterProfiler::dotplot(ego, x = "GeneRatio", showCategory=30) )
+  dev.off()
+  ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path=paste0("EnrichmentDotPlot_", name, "_GeneSetSize_", length(set),"_gt2.pdf"), name = paste0("EnrichmentDotPlot_", name, "_GeneSetSize_", length(set),"_Gene apperars gt 2 times"), parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  
+  pdf(file = paste0("EnrichmentNetPlot_", name, "_GeneSetSize_", length(set),"_gt2.pdf"), width = 14, height = 7)
+    print( clusterProfiler::dotplot(ego, x = "GeneRatio", showCategory=30) )
+  dev.off()
+  ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path=paste0("EnrichmentNetPlot_", name, "_GeneSetSize_", length(set),"_gt2.pdf"), name = paste0("EnrichmentNetPlot_", name, "_GeneSetSize_", length(set),"_Gene apperars gt 2 times"), parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+}
+
+for( name in names(Expand_gt1)){
+  eval(parse(text=paste0('set <- Expand_gt1$', 'name' )))
+  ego <- enrichGO(gene            = set,
+                    universe      = GENEsyb[,'hgnc_symbol'],
+                    OrgDb         = org.Hs.eg.db,
+                    keyType      = 'SYMBOL',
+                    ont           = "ALL",
+                    pAdjustMethod = "BH",
+                    pvalueCutoff  = 0.01,
+                    qvalueCutoff  = 0.05
+                  )
+  
+  clusterProfiler::dotplot(ego, x = "GeneRatio", showCategory=30)
+  cnetplot(ego, foldChange=NULL)
+  
+  
+  Dot <- clusterProfiler::dotplot(ego, x = "GeneRatio", showCategory=30)
+  Net <- cnetplot(ego, foldChange=NULL)
+  
+  pdf(file = paste0("EnrichmentDotPlot_", name, "_GeneSetSize_", length(set),"_gt1.pdf"), width = 14, height = 7)
+    print( clusterProfiler::dotplot(ego, x = "GeneRatio", showCategory=30) )
+  dev.off()
+  ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path=paste0("EnrichmentDotPlot_", name, "_GeneSetSize_", length(set),"_gt1.pdf"), name = paste0("EnrichmentDotPlot_", name, "_GeneSetSize_", length(set),"_Gene apperars gt 1 times"), parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  
+  pdf(file = paste0("EnrichmentNetPlot_", name, "_GeneSetSize_", length(set),"_gt1.pdf"), width = 14, height = 7)
+    print( clusterProfiler::dotplot(ego, x = "GeneRatio", showCategory=30) )
+  dev.off()
+  ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path=paste0("EnrichmentNetPlot_", name, "_GeneSetSize_", length(set),"_gt1.pdf"), name = paste0("EnrichmentNetPlot_", name, "_GeneSetSize_", length(set),"_Gene apperars gt 1 times"), parentId=CODE$properties$id ), activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  
+  
+}
+
+
+
+```
+
+
+
+
+
+##### Deprecated:
 ```{r SDcutOff }
 library(doParallel)
 library(parallel)
@@ -532,7 +795,7 @@ CODE <- syn_temp$store(synapseclient$Folder(name = "Gene Set Enrichment Plots", 
 
 library( clusterProfiler )
 library(enrichplot)
-
+library(enrichR)
 
 Enrich_Run <- function( cutoffs ){
   #'@cutoffs a named vector of SD cutoff valutes for genes
