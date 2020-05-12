@@ -358,7 +358,7 @@ thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('c
 CODE <- syn_temp$store(synapseclient$Folder(name = "Gene Set Enrichment Plots", parentId = parentId))
 
 for( name in names(Expand_gt2)){
-  eval(parse(text=paste0('set <- Expand_gt2$', 'name' )))
+  eval(parse(text=paste0('set <- Expand_gt2$', name )))
   ego <- enrichGO(gene            = set,
                     universe      = GENEsyb[,'hgnc_symbol'],
                     OrgDb         = org.Hs.eg.db,
@@ -388,7 +388,7 @@ for( name in names(Expand_gt2)){
 }
 
 for( name in names(Expand_gt1)){
-  eval(parse(text=paste0('set <- Expand_gt1$', 'name' )))
+  eval(parse(text=paste0('set <- Expand_gt1$', name )))
   ego <- enrichGO(gene            = set,
                     universe      = GENEsyb[,'hgnc_symbol'],
                     OrgDb         = org.Hs.eg.db,
