@@ -237,7 +237,7 @@ write.table(Table, file='Final_SMR_TWAS_Jansen_Validation.tsv', row.names=F, col
 parentId = 'syn18936948';
 activityName = 'Mendelian Randomization';
 activityDescription = 'Validation of TWAS associations via SMR analysis';
-thisFileName <- 'SMR.Rmd'
+thisFileName <- 'Jansen_SMR.Rmd'
 # Github link
 thisRepo <- githubr::getRepo(repository = "jgockley62/TWAS", ref="branch", refName='master')
 thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thisFileName))
@@ -280,7 +280,7 @@ syn_temp$login()
 setwd("~/TWAS/code/")
 source("~/TWAS/utilityFunctions/knitfile2synapseClient.R")
 source("~/TWAS/utilityFunctions/hook_synapseMdSyntax_plot.R")
-createAndKnitToFolderEntityClient(file = "SMR.Rmd",
+createAndKnitToFolderEntityClient(file = "Jansen_SMR.Rmd",
                                   parentId ="syn18936948",
                                   folderName = 'Summary-data-based Mendelian Randomization')
 ```
