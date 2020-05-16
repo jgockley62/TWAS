@@ -216,8 +216,8 @@ Sys.time()-foo
 
 stopCluster(cl)
 
-system( 'awk \'{print $1"\t"$2"\t"$3"\t"$4"\t"$5"\t"$6"\t"$7"\t"$8"\t"$9"\t"$10"\t"$11"\t"$12"\t"$13"\t"$14"\t"$15"\t"$16"\t"$17"\t"$18"\t"$19"\t"$20"\t"$21"\t"$22}\' Compiled_SMR.tsv > temp.tsv') 
-system('mv temp.tsv Compiled_SMR.tsv')
+#system( 'awk \'{print $1"\t"$2"\t"$3"\t"$4"\t"$5"\t"$6"\t"$7"\t"$8"\t"$9"\t"$10"\t"$11"\t"$12"\t"$13"\t"$14"\t"$15"\t"$16"\t"$17"\t"$18"\t"$19"\t"$20"\t"$21"\t"$22}\' Compiled_SMR.tsv > temp.tsv') 
+#system('mv temp.tsv Compiled_SMR.tsv')
 Table<-read.table(file='Compiled_SMR.tsv', , sep='\t', header=T)
 system( 'awk -F \',\' \'{ print $5"\t"$6 }\' Cortex_MetaAnalysis_ROSMAP_CMC_HBCC_Mayo_cis_eQTL_release.csv | sort | uniq | grep -v \'geneSymbol\' > Translate.txt')
 Trans <- read.table( file='Translate.txt', sep ="\t", header=F)
@@ -282,5 +282,5 @@ source("~/TWAS/utilityFunctions/knitfile2synapseClient.R")
 source("~/TWAS/utilityFunctions/hook_synapseMdSyntax_plot.R")
 createAndKnitToFolderEntityClient(file = "Jansen_SMR.Rmd",
                                   parentId ="syn22050453",
-                                  folderName = 'Summary-data-based Mendelian Randomization')
+                                  folderName = 'Jansen_SMR')
 ```
