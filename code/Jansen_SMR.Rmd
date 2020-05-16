@@ -234,7 +234,7 @@ write.table(Table, file='Final_SMR_TWAS_Jansen_Validation.tsv', row.names=F, col
 
 
 ```{r synapse.parameters, include=FALSE, cache=TRUE}
-parentId = 'syn18936948';
+parentId = 'syn22050453';
 activityName = 'Mendelian Randomization';
 activityDescription = 'Validation of TWAS associations via SMR analysis';
 thisFileName <- 'Jansen_SMR.Rmd'
@@ -281,6 +281,6 @@ setwd("~/TWAS/code/")
 source("~/TWAS/utilityFunctions/knitfile2synapseClient.R")
 source("~/TWAS/utilityFunctions/hook_synapseMdSyntax_plot.R")
 createAndKnitToFolderEntityClient(file = "Jansen_SMR.Rmd",
-                                  parentId ="syn18936948",
+                                  parentId ="syn22050453",
                                   folderName = 'Summary-data-based Mendelian Randomization')
 ```
