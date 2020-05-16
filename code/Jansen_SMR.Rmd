@@ -247,7 +247,7 @@ thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('c
 ```{r synapse.store, include=FALSE, eval=TRUE, cache=FALSE}
 activityName = 'Mendelian Randomization';
 activityDescription = 'Validation of TWAS associations via SMR analysis';
-CODE <- syn_temp$store(synapseclient$Folder(name = "Summary-data-based Mendelian Randomization", parentId = parentId))
+CODE <- syn_temp$store(synapseclient$Folder(name = "Jansen_SMR", parentId = parentId))
 # Set annotations
 all.annotations = list(
   dataType = 'analysis',
