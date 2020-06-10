@@ -1,9 +1,12 @@
+code/*.RData
 code/*.pdf
 code/*.list
 code/*.eps
 code/*.esi
 code/*.epi
 code/*.besd
+code/*.csv
+code/*.txt
 code/ItertBlockProbGenes.txt
 ./code/CMC_SVA_ACC_Diagnosis_Corrected.tsv
 code/CMC_SVA_ACC_Diagnosis_Corrected.tsv
@@ -14,6 +17,9 @@ code/*.txt
 code/*.tsv
 code/*.png
 *.tsv
+code/smr_Linux
+code/prettify
+code/plink
 prettify
 plink_linux_x86_64_20190617.zip
 LICENSE
@@ -29,4 +35,4 @@ code/output_dir/
 code/smr_Linux
 *.png
 *.csv
-*RData
+*.RData
