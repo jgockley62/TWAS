@@ -1,3 +1,9 @@
+code/ROSMAP_RegressDiagnosis_4_TWAS_hg38.Rmd
+code/ROSMAP_Regress_hg38.Rmd
+code/Mayo_RegressDiagnosis_4_TWAS_hg38.Rmd
+code/Mayo_Regress_hg38.Rmd
+code/MSBB_RegressDiagnosis_4_TWAS_hg38.Rmd
+code/MSBB_Regress_hg38.Rmd
 code/metaAnalysisForDiffExp_hg38.Rmd
 code/metaAnalysisForDiffExp_NoCBE.Rmd
 code/CMC_Validation.Rmd
