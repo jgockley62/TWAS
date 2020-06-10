@@ -1,3 +1,6 @@
+code/CMC_ACC_Exp_DataProce*
+code/GTExPreProcess.Rmd
+code/ItertBlockProbGenes.txt
 code/*.RData
 code/*.pdf
 code/*.list
@@ -17,6 +20,7 @@ code/*.txt
 code/*.tsv
 code/*.png
 *.tsv
+code/Test.Rmd
 code/smr_Linux
 code/prettify
 code/plink
