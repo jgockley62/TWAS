@@ -1,4 +1,5 @@
 #!/usr/bin/python
+#Altered code from: Gusev et al. “Integrative approaches for large-scale transcriptome-wide association studies” 2016 Nature Genetics
 
 import sys
 import os
