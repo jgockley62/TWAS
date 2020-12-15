@@ -1372,7 +1372,7 @@ stopCluster(cl)
 ```
 
 ```{r DelFiles, echo=T, results='hide'}
-system('rm *.tsv')
+#system('rm *.tsv')
 ```
 ### R Source Code
 [Github](`r thisFile`)
@@ -1382,6 +1382,11 @@ reticulate::use_python("/usr/bin/python", required = TRUE)
 synapseclient <- reticulate::import("synapseclient")
 syn_temp <- synapseclient$Synapse()
 syn_temp$login()
+
+#_ Set this Variable to filter Rin > 5 _#
+RIN_Filt <- FALSE
+#_ Set this Variable to use sageseqr vals _#
+SageSeqR <- FALSE
 
 setwd("~/TWAS/code/")
 source("~/TWAS/utilityFunctions/knitfile2synapseClient.R")
