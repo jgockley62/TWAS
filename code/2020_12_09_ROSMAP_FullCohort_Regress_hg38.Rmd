@@ -154,7 +154,7 @@ METADATA$Diagnosis[METADATA$cogdx == 4 & METADATA$braaksc >= 4 & METADATA$cerads
 METADATA <- METADATA[ , (colnames(METADATA) %in% "diagnosis") == F ]
 
 ```
-Dorsolateral prefrontal cortex of `r dim(COUNT)[2]` subjects from the ROS and MAP cohorts are used for the analysis. Following sample are removed due to missing metadata `r paste(removedIDs, collapse = ',')`
+Dorsolateral prefrontal cortex of `r dim(COUNT)[2]` subjects from the ROS and MAP cohorts are used for the analysis. Following sample are removed due to missing metadata 
 
 ### Covariate clustering
 Determine relationship between covariates
@@ -1259,7 +1259,7 @@ thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('c
 activityName = 'Covariate Regression';
 activityDescription = 'Covariate analysis and Regression of aligned effective counts with GRCh38 with CQN normalisation (DLPFC)';
 
-CODE <- syn_temp$store(synapseclient$Folder(name = 'Full_RosMap_OldCode', parentId = parentId))
+CODE <- syn_temp$store(synapseclient$Folder(name = folderName, parentId = parentId))
 
 Syns_Used <- c( "syn23625835", "syn23625835",
                 "syn23573928", "syn21075913",
@@ -1394,6 +1394,6 @@ source("~/TWAS/utilityFunctions/hook_synapseMdSyntax_plot.R")
 
 createAndKnitToFolderEntityClient(file = "2020_12_09_ROSMAP_FullCohort_Regress_hg38.Rmd",
                                           parentId ="syn23640229",
-                                          folderName = 'ROSMAP')
+                                          folderName = 'Full_RosMap_OldCode')
 
 ```
