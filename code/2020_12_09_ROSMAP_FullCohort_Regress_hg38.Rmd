@@ -1259,7 +1259,7 @@ thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('c
 activityName = 'Covariate Regression';
 activityDescription = 'Covariate analysis and Regression of aligned effective counts with GRCh38 with CQN normalisation (DLPFC)';
 
-CODE <- syn_temp$store(synapseclient$Folder(name = "ROSMAP", parentId = parentId))
+CODE <- syn_temp$store(synapseclient$Folder(name = 'Full_RosMap_OldCode', parentId = parentId))
 
 Syns_Used <- c( "syn23625835", "syn23625835",
                 "syn23573928", "syn21075913",
@@ -1392,8 +1392,8 @@ setwd("~/TWAS/code/")
 source("~/TWAS/utilityFunctions/knitfile2synapseClient.R")
 source("~/TWAS/utilityFunctions/hook_synapseMdSyntax_plot.R")
 
-createAndKnitToFolderEntityClient(file = "ROSMAP_Regress_hg38.Rmd",
-                                          parentId ="syn21277617",
+createAndKnitToFolderEntityClient(file = "2020_12_09_ROSMAP_FullCohort_Regress_hg38.Rmd",
+                                          parentId ="syn23640229",
                                           folderName = 'ROSMAP')
 
 ```
