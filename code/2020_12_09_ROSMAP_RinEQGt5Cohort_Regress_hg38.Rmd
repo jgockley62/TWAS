@@ -96,7 +96,7 @@ Meta_OBJ <- syn_temp$get( Meta_ID, version = 2 )
 Meta <- read.csv( Meta_OBJ$path, header=T, check.names = F, row.names = 1 )
 
 #Filter for Rin Here#
-Meta[ Meta$RIN >= 5 | Meta$sampleid %in% c('380_120503','500_120515'), ]
+Meta <- Meta[ Meta$RIN >= 5 | Meta$sampleid %in% c('380_120503','500_120515'), ]
 
 #Filter Out Sample Swaps
 Meta <- Meta[ Meta$FailQC_SampleSwapped == 0, ]
