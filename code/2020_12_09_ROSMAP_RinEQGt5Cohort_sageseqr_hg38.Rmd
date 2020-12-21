@@ -779,7 +779,7 @@ FIT = lmFit(VOOM.WEIGHTS)
 # Fit contrast
 cntr = c()
 for (region in c('ACC','PCC','DLPFC')){
-  tmp = combn(paste0('Tissue.Diagnosis', region, '.', c('AD', 'OTHER', 'CONTROL')),2)
+  tmp = combn(paste0('Tissue.Diagnosis', region, '.', c('AD', 'other', 'control')),2)
   cntr = c(cntr, apply(tmp, 2, paste, collapse = '-'))
 }
 contrast = makeContrasts(contrasts=cntr,
@@ -825,17 +825,17 @@ all.fit = c(all.fit, list(Diagnosis = FIT))
 ### Associate differential expression results with gc content, gene length and average expression
 ```{r associate.de, fig.height=10, fig.width=15}
 pl = list()
-pl[[1]] = ggplot(DE %>% dplyr::filter(Comparison == 'AD-CONTROL'), 
+pl[[1]] = ggplot(DE %>% dplyr::filter(Comparison == 'AD-control'), 
                  aes(x = log10(gene_length), y = logFC, color = Direction)) + geom_point() 
 pl[[1]] = pl[[1]] + geom_smooth(method = 'loess', inherit.aes = FALSE, aes(x = log10(gene_length), y = logFC))
 pl[[1]] = pl[[1]] + facet_grid(Tissue~.+Comparison) + scale_color_manual(values = c('green','grey','red'))
 pl[[1]] = pl[[1]] + theme(legend.position = 'top')
-pl[[2]] = ggplot(DE %>% dplyr::filter(Comparison == 'AD-CONTROL'), 
+pl[[2]] = ggplot(DE %>% dplyr::filter(Comparison == 'AD-control'), 
                  aes(x = percentage_gene_gc_content, y = logFC, color = Direction)) + geom_point()
 pl[[2]] = pl[[2]] + geom_smooth(method = 'loess', inherit.aes = FALSE, aes(x = percentage_gene_gc_content, y = logFC))
 pl[[2]] = pl[[2]] + facet_grid(Tissue~.+Comparison) + scale_color_manual(values = c('green','grey','red'))
 pl[[2]] = pl[[2]] + theme(legend.position = 'top')
-pl[[3]] = ggplot(DE %>% dplyr::filter(Comparison == 'AD-CONTROL'), 
+pl[[3]] = ggplot(DE %>% dplyr::filter(Comparison == 'AD-control'), 
                  aes(x = AveExpr, y = logFC, color = Direction)) + geom_point()
 pl[[3]] = pl[[3]] + geom_smooth(method = 'loess', inherit.aes = FALSE, aes(x = AveExpr, y = logFC))
 pl[[3]] = pl[[3]] + facet_grid(Tissue~.+Comparison) + scale_color_manual(values = c('green','grey','red'))
@@ -918,59 +918,34 @@ Genes that are differentially expressed at an FDR <= 0.05 and folde change of 1.
 ```{r diff.exp3, fig.height=6, fig.width=18, cache=FALSE}
 ## Modeling Diagnosis, msex and age_death conjointly
 COVARIATES$Tissue.Diagnosis.SEX = paste(COVARIATES$Tissue.Diagnosis,COVARIATES$sex, sep = '.') %>% factor
+
 # Get design matrix
-DESIGN = getDesignMatrix(COVARIATES[, c('Tissue.Diagnosis.SEX', setdiff(postAdjustCovars, 'SEX')), drop = F], Intercept = F)
+DESIGN = getDesignMatrix(COVARIATES[, c('Tissue.Diagnosis.SEX', setdiff(postAdjustCovars, 'Sex')), drop = F], Intercept = F)
 DESIGN$design = DESIGN$design[,linColumnFinder(DESIGN$design)$indepCols]
-# Re-estimate voom weights
-VOOM.WEIGHTS = voom(cnts,
-                    design=DESIGN$design, plot=F,
-                    block = COVARIATES$individualIdentifier, 
-                    correlation = correlation$cor)
+colnames(DESIGN$design) = gsub('Tissue.Diagnosis.SEX','',colnames(DESIGN$design))
+# Estimate voom weights for dispersion control
+VOOM.WEIGHTS = voom(cnts, design=DESIGN$design, plot=F)
 # Fit linear model using new weights and new design
-VOOM.WEIGHTS$E = CQN.GENE_EXPRESSION$E
-FIT = lmFit(VOOM.WEIGHTS)
-cntr = c('Tissue.Diagnosis.SEXACC.AD.male-Tissue.Diagnosis.SEXACC.CONTROL.male',
-         'Tissue.Diagnosis.SEXACC.AD.female-Tissue.Diagnosis.SEXACC.CONTROL.female',
-         '0.5*Tissue.Diagnosis.SEXACC.AD.male+0.5*Tissue.Diagnosis.SEXACC.AD.female
-         -0.5*Tissue.Diagnosis.SEXACC.CONTROL.male-0.5*Tissue.Diagnosis.SEXACC.CONTROL.female',
-         '0.5*Tissue.Diagnosis.SEXACC.AD.female+0.5*Tissue.Diagnosis.SEXACC.CONTROL.female
-         -0.5*Tissue.Diagnosis.SEXACC.AD.male-0.5*Tissue.Diagnosis.SEXACC.CONTROL.female',
-         '0.5*Tissue.Diagnosis.SEXACC.AD.female-0.5*Tissue.Diagnosis.SEXACC.CONTROL.female
-         -0.5*Tissue.Diagnosis.SEXACC.AD.male+0.5*Tissue.Diagnosis.SEXACC.CONTROL.male',
-         'Tissue.Diagnosis.SEXDLPFC.AD.male-Tissue.Diagnosis.SEXDLPFC.CONTROL.male',
-         'Tissue.Diagnosis.SEXDLPFC.AD.female-Tissue.Diagnosis.SEXDLPFC.CONTROL.female',
-         '0.5*Tissue.Diagnosis.SEXDLPFC.AD.male+0.5*Tissue.Diagnosis.SEXDLPFC.AD.female
-         -0.5*Tissue.Diagnosis.SEXDLPFC.CONTROL.male-0.5*Tissue.Diagnosis.SEXDLPFC.CONTROL.female',
-         '0.5*Tissue.Diagnosis.SEXDLPFC.AD.female+0.5*Tissue.Diagnosis.SEXDLPFC.CONTROL.female
-         -0.5*Tissue.Diagnosis.SEXDLPFC.AD.male-0.5*Tissue.Diagnosis.SEXDLPFC.CONTROL.female',
-         '0.5*Tissue.Diagnosis.SEXDLPFC.AD.female-0.5*Tissue.Diagnosis.SEXDLPFC.CONTROL.female
-         -0.5*Tissue.Diagnosis.SEXDLPFC.AD.male+0.5*Tissue.Diagnosis.SEXDLPFC.CONTROL.male',
-         'Tissue.Diagnosis.SEXPCC.AD.male-Tissue.Diagnosis.SEXPCC.CONTROL.male',
-         'Tissue.Diagnosis.SEXPCC.AD.female-Tissue.Diagnosis.SEXPCC.CONTROL.female',
-         '0.5*Tissue.Diagnosis.SEXPCC.AD.male+0.5*Tissue.Diagnosis.SEXPCC.AD.female
-         -0.5*Tissue.Diagnosis.SEXPCC.CONTROL.male-0.5*Tissue.Diagnosis.SEXPCC.CONTROL.female',
-         '0.5*Tissue.Diagnosis.SEXPCC.AD.female+0.5*Tissue.Diagnosis.SEXPCC.CONTROL.female
-         -0.5*Tissue.Diagnosis.SEXPCC.AD.male-0.5*Tissue.Diagnosis.SEXPCC.CONTROL.female',
-         '0.5*Tissue.Diagnosis.SEXPCC.AD.female-0.5*Tissue.Diagnosis.SEXPCC.CONTROL.female
-         -0.5*Tissue.Diagnosis.SEXPCC.AD.male+0.5*Tissue.Diagnosis.SEXPCC.CONTROL.male')
-contrast = makeContrasts(contrasts=cntr,
+FIT = lmFit(CQN.GENE_EXPRESSION$E,
+            design = DESIGN$design,
+            weights = VOOM.WEIGHTS$weights)
+
+contrast = makeContrasts(contrasts=c("(ACC.AD.female+ ACC.AD.male)/2-( ACC.control.female+ACC.control.male)/2",
+                                     "(ACC.AD.female+ ACC.control.female)/2-( ACC.AD.male+ACC.control.male)/2",
+                                     "(ACC.AD.female- ACC.control.female)/2-( ACC.AD.male-ACC.control.male)/2",
+                                     "ACC.AD.female- ACC.control.female",
+                                     "ACC.AD.male- ACC.control.male",
+                                     "( DLPFC.AD.female+ DLPFC.AD.male)/2-( DLPFC.control.female+ DLPFC.control.male)/2",
+                                     "( DLPFC.AD.female+ DLPFC.control.female)/2-( DLPFC.AD.male+ DLPFC.control.male)/2",
+                                     "( DLPFC.AD.female- DLPFC.control.female)/2-( DLPFC.AD.male- DLPFC.control.male)/2",
+                                     "DLPFC.AD.female- DLPFC.control.female",
+                                     "DLPFC.AD.male- DLPFC.control.male",
+                                     "( PCC.AD.female+ PCC.AD.male)/2-( PCC.control.female+ PCC.control.male)/2",
+                                     "( PCC.AD.female+ PCC.control.female)/2-( PCC.AD.male+ PCC.control.male)/2",
+                                     "( PCC.AD.female- PCC.control.female)/2-( PCC.AD.male- PCC.control.male)/2",
+                                     "PCC.AD.female- PCC.control.female",
+                                     "PCC.AD.male- PCC.control.male"),
                          levels = colnames(FIT$coefficients))
-colnames(contrast) = c('ACC.AD.MALE-ACC.CONTROL.MALE',
-                       'ACC.AD.FEMALE-ACC.CONTROL.FEMALE',
-                       'ACC.AD.ALL-ACC.CONTROL.ALL',
-                       'ACC.ALL.FEMALE-ACC.ALL.MALE',
-                       'ACC.ALL.ALL-ACC.ALL.ALL',
-                       'DLPFC.AD.MALE-DLPFC.CONTROL.MALE',
-                       'DLPFC.AD.FEMALE-DLPFC.CONTROL.FEMALE',
-                       'DLPFC.AD.ALL-DLPFC.CONTROL.ALL',
-                       'DLPFC.ALL.FEMALE-DLPFC.ALL.MALE',
-                       'DLPFC.ALL.ALL-DLPFC.ALL.ALL',
-                       'PCC.AD.MALE-PCC.CONTROL.MALE',
-                       'PCC.AD.FEMALE-PCC.CONTROL.FEMALE',
-                       'PCC.AD.ALL-PCC.CONTROL.ALL',
-                       'PCC.ALL.FEMALE-PCC.ALL.MALE',
-                       'PCC.ALL.ALL-PCC.ALL.ALL'
-                       )
 FIT.CONTR = contrasts.fit(FIT, contrasts=contrast)
 FIT.CONTR = eBayes(FIT.CONTR)
 # Get differnetial expression
@@ -978,29 +953,33 @@ DE = lapply(1:dim(contrast)[2], function(i, FIT){
   topTable(FIT, coef=i, number = 50000, confint = T) %>%
     rownameToFirstColumn('ensembl_gene_id')
 }, FIT.CONTR)
-names(DE) = colnames(contrast)
+names(DE) = c('ACC-AD-CONTROL','ACC-FEMALE-MALE','ACC-AD-CONTROL.IN.FEMALE-MALE','ACC-AD-CONTROL.IN.FEMALE', 'ACC-AD-CONTROL.IN.MALE',
+              'DLPFC-AD-CONTROL','DLPFC-FEMALE-MALE','DLPFC-AD-CONTROL.IN.FEMALE-MALE','DLPFC-AD-CONTROL.IN.FEMALE', 'DLPFC-AD-CONTROL.IN.MALE',
+              'PCC-AD-CONTROL','PCC-FEMALE-MALE','PCC-AD-CONTROL.IN.FEMALE-MALE','PCC-AD-CONTROL.IN.FEMALE', 'PCC-AD-CONTROL.IN.MALE')
 DE = DE %>% 
   rbindlist(idcol = 'Comparison') %>%
-  dplyr::mutate(Comparison = gsub('Tissue.Diagnosis','',Comparison),
-                Study = 'ROSMAP',
-                Direction = logFC/abs(logFC),
-                Direction = factor(Direction, c(-1,1), c('-1' = 'DOWN', '1' = 'UP')),
-                Direction = as.character(Direction)) %>%
   left_join(GENE.PARAM %>%
               dplyr::select(ensembl_gene_id, hgnc_symbol, percentage_gene_gc_content, gene_length) %>%
-              unique())
+              unique()) %>%
+  dplyr::mutate(Study = 'ROSMAP', Region = 'DLPFC',
+                Direction = logFC/abs(logFC),
+                Direction = factor(Direction, c(-1,1), c('-1' = 'DOWN', '1' = 'UP')),
+                Direction = as.character(Direction))
 DE$Direction[DE$adj.P.Val > 0.05 | abs(DE$logFC) < log2(1.2)] = 'NONE'
-DE$Tissue <- do.call( rbind, strsplit( DE$Comparison, '[.]'))[,1]
-DE$Comparison <- gsub('DLPFC.', '',gsub('ACC.', '', gsub('PCC.', '',  DE$Comparison )))
+writeLines('Differentially expressed genes at an FDR 0.05 and logFC 1.2')
 tmp = DE %>%
-  dplyr::select(ensembl_gene_id, Tissue, Comparison, Direction) %>%
-  group_by(Tissue, Comparison, Direction) %>%
+  dplyr::select(ensembl_gene_id, Region, Comparison, Direction) %>%
+  group_by(Comparison, Direction) %>%
   dplyr::summarise(FDR_0_05_FC_1.2 = length(unique(ensembl_gene_id))) %>%
   spread(Direction, FDR_0_05_FC_1.2) 
 kable(tmp)
-DE$Tissue <- do.call( rbind, strsplit( DE$Comparison, '[.]'))[,1]
-all.diff.exp = c(all.diff.exp, list(Diagnosis.SEX = DE))
-all.fit = c(all.fit, list(Diagnosis.SEX = FIT))
+p = ggplot(DE, aes(y = -log10(adj.P.Val), x = logFC, color = Direction)) + geom_point() + xlim(c(-1,1))
+p = p + scale_color_manual(values = c('green','grey','red')) + theme(legend.position='top')
+p = p + facet_grid(Region+.~Comparison, scales = 'fixed')
+p
+
+all.diff.exp = c(all.diff.exp, list(Diagnosis.Sex = DE))
+all.fit = c(all.fit, list(Diagnosis.Sex = FIT))
 ```
 
 ### Differential expression analysis (with Diagnosis and AOD)
@@ -1023,12 +1002,12 @@ VOOM.WEIGHTS = voom(cnts,
 # Fit linear model using new weights and new design
 VOOM.WEIGHTS$E = CQN.GENE_EXPRESSION$E
 FIT = lmFit(VOOM.WEIGHTS)
-cntr = c("ACC.AD.age_death-ACC.CONTROL.age_death",
-         "0.5*ACC.AD.age_death+0.5*ACC.CONTROL.age_death",
-         "DLPFC.AD.age_death-DLPFC.CONTROL.age_death",
-         "0.5*DLPFC.AD.age_death+0.5*DLPFC.CONTROL.age_death",
-         "PCC.AD.age_death-PCC.CONTROL.age_death",
-         "0.5*PCC.AD.age_death+0.5*PCC.CONTROL.age_death"
+cntr = c("ACC.AD.age_death-ACC.control.age_death",
+         "0.5*ACC.AD.age_death+0.5*ACC.control.age_death",
+         "DLPFC.AD.age_death-DLPFC.control.age_death",
+         "0.5*DLPFC.AD.age_death+0.5*DLPFC.control.age_death",
+         "PCC.AD.age_death-PCC.control.age_death",
+         "0.5*PCC.AD.age_death+0.5*PCC.control.age_death"
         )
          
 contrast = makeContrasts(contrasts=cntr,
