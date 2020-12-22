@@ -69,6 +69,9 @@ row.names(COUNT) <- as.character(COUNT$feature)
 COUNT <- COUNT[ ,(colnames(COUNT) %in% 'feature')==F ]
 COUNT <- as.matrix(COUNT)
 
+#Toss Zero variance genes post residual correct
+COUNT <- COUNT[ (row.names(COUNT) %in% c("ENSG00000239467", "ENSG00000005486", "ENSG00000160972", "ENSG00000165886", "ENSG00000002330", "ENSG00000149823", "ENSG00000139722", "ENSG00000169217", "ENSG00000127774", "ENSG00000122490", "ENSG00000130881", "ENSG00000126005", "ENSG00000171222", "ENSG00000070413", "ENSG00000211459")) == F, ]
+
 Provenance <- 'syn21075913'
 Prov <- syn_temp$get(Provenance, version = 1)
 ALL_USED_IDs[length(ALL_USED_IDs)+1] = Provenance
@@ -229,17 +232,24 @@ genesToAnalyze = COVARIATES %>%
                                                      MIN_SAMPLE_PERCENT_WITH_MIN_GENE_CPM=0.5)
     processed.counts$filteredExprMatrix$genes
   }, COUNT)
+#filter out non-variable genes post residual removal
+
 genesToAnalyze = unlist(genesToAnalyze) %>% 
   unique() %>%
   intersect(GENE.GC$ensembl_gene_id[!is.na(GENE.GC$percentage_gene_gc_content)]) %>%
   intersect(GENE.LEN$ensembl_gene_id[!is.na(GENE.LEN$gene_length)]) %>%
-  setdiff(c("N_unmapped", "N_multimapping", "N_noFeature", "N_ambiguous"))
+  setdiff(c("N_unmapped", "N_multimapping", "N_noFeature", "N_ambiguous")) %>%
+  setdiff( c("ENSG00000239467", "ENSG00000005486", "ENSG00000160972", "ENSG00000165886", "ENSG00000002330", "ENSG00000149823", "ENSG00000139722", "ENSG00000169217", "ENSG00000127774", "ENSG00000122490", "ENSG00000130881", "ENSG00000126005", "ENSG00000171222", "ENSG00000070413", "ENSG00000211459") )
+
+#18404
+#vs
+#18415
 PROCESSED_COUNTS = getGeneFilteredGeneExprMatrix(COUNT[genesToAnalyze, ], 
                                                  MIN_GENE_CPM=0, 
                                                  MIN_SAMPLE_PERCENT_WITH_MIN_GENE_CPM=0)
 
 Ensemble2HGNC <- GENE.PARAM[ GENE.PARAM$ensembl_gene_id %in% PROCESSED_COUNTS$filteredExprMatrix$genes$genes, ] 
-                             
+                      
 summary(factor(Ensemble2HGNC$gene_biotype)) %>%
   rownameToFirstColumn('Biotype') %>%
   dplyr::rename(fraction = DF) %>%
@@ -890,31 +900,24 @@ VOOM.WEIGHTS = voom(cnts,
 # Fit linear model using new weights and new design
 VOOM.WEIGHTS$E = CQN.GENE_EXPRESSION$E
 FIT = lmFit(VOOM.WEIGHTS)
-cntr = c('Tissue.Diagnosis.SEXACC.AD.male-Tissue.Diagnosis.SEXACC.CONTROL.male',
-         'Tissue.Diagnosis.SEXACC.AD.female-Tissue.Diagnosis.SEXACC.CONTROL.female',
-         '0.5*Tissue.Diagnosis.SEXACC.AD.male+0.5*Tissue.Diagnosis.SEXACC.AD.female
-         -0.5*Tissue.Diagnosis.SEXACC.CONTROL.male-0.5*Tissue.Diagnosis.SEXACC.CONTROL.female',
-         '0.5*Tissue.Diagnosis.SEXACC.AD.female+0.5*Tissue.Diagnosis.SEXACC.CONTROL.female
-         -0.5*Tissue.Diagnosis.SEXACC.AD.male-0.5*Tissue.Diagnosis.SEXACC.CONTROL.female',
-         '0.5*Tissue.Diagnosis.SEXACC.AD.female-0.5*Tissue.Diagnosis.SEXACC.CONTROL.female
-         -0.5*Tissue.Diagnosis.SEXACC.AD.male+0.5*Tissue.Diagnosis.SEXACC.CONTROL.male',
-         'Tissue.Diagnosis.SEXDLPFC.AD.male-Tissue.Diagnosis.SEXDLPFC.CONTROL.male',
-         'Tissue.Diagnosis.SEXDLPFC.AD.female-Tissue.Diagnosis.SEXDLPFC.CONTROL.female',
-         '0.5*Tissue.Diagnosis.SEXDLPFC.AD.male+0.5*Tissue.Diagnosis.SEXDLPFC.AD.female
-         -0.5*Tissue.Diagnosis.SEXDLPFC.CONTROL.male-0.5*Tissue.Diagnosis.SEXDLPFC.CONTROL.female',
-         '0.5*Tissue.Diagnosis.SEXDLPFC.AD.female+0.5*Tissue.Diagnosis.SEXDLPFC.CONTROL.female
-         -0.5*Tissue.Diagnosis.SEXDLPFC.AD.male-0.5*Tissue.Diagnosis.SEXDLPFC.CONTROL.female',
-         '0.5*Tissue.Diagnosis.SEXDLPFC.AD.female-0.5*Tissue.Diagnosis.SEXDLPFC.CONTROL.female
-         -0.5*Tissue.Diagnosis.SEXDLPFC.AD.male+0.5*Tissue.Diagnosis.SEXDLPFC.CONTROL.male',
-         'Tissue.Diagnosis.SEXPCC.AD.male-Tissue.Diagnosis.SEXPCC.CONTROL.male',
-         'Tissue.Diagnosis.SEXPCC.AD.female-Tissue.Diagnosis.SEXPCC.CONTROL.female',
-         '0.5*Tissue.Diagnosis.SEXPCC.AD.male+0.5*Tissue.Diagnosis.SEXPCC.AD.female
-         -0.5*Tissue.Diagnosis.SEXPCC.CONTROL.male-0.5*Tissue.Diagnosis.SEXPCC.CONTROL.female',
-         '0.5*Tissue.Diagnosis.SEXPCC.AD.female+0.5*Tissue.Diagnosis.SEXPCC.CONTROL.female
-         -0.5*Tissue.Diagnosis.SEXPCC.AD.male-0.5*Tissue.Diagnosis.SEXPCC.CONTROL.female',
-         '0.5*Tissue.Diagnosis.SEXPCC.AD.female-0.5*Tissue.Diagnosis.SEXPCC.CONTROL.female
-         -0.5*Tissue.Diagnosis.SEXPCC.AD.male+0.5*Tissue.Diagnosis.SEXPCC.CONTROL.male')
-contrast = makeContrasts(contrasts=cntr,
+
+colnames(FIT$coefficients) <- gsub( 'Tissue.Diagnosis.SEX','',colnames(FIT$coefficients))
+# Fit contrast
+contrast = makeContrasts(contrasts=c("(ACC.AD.female+ACC.AD.male)/2-(ACC.CONTROL.female+ACC.CONTROL.male)/2",
+                                     "(ACC.AD.female+ACC.CONTROL.female)/2-(ACC.AD.male+ACC.CONTROL.male)/2",
+                                     "(ACC.AD.female-ACC.CONTROL.female)/2-(ACC.AD.male-ACC.CONTROL.male)/2",
+                                     "ACC.AD.female-ACC.CONTROL.female",
+                                     "ACC.AD.male-ACC.CONTROL.male",
+                                     "(DLPFC.AD.female+DLPFC.AD.male)/2-(DLPFC.CONTROL.female+DLPFC.CONTROL.male)/2",
+                                     "(DLPFC.AD.female+DLPFC.CONTROL.female)/2-(DLPFC.AD.male+DLPFC.CONTROL.male)/2",
+                                     "(DLPFC.AD.female-DLPFC.CONTROL.female)/2-(DLPFC.AD.male-DLPFC.CONTROL.male)/2",
+                                     "DLPFC.AD.female-DLPFC.CONTROL.female",
+                                     "DLPFC.AD.male-DLPFC.CONTROL.male",
+                                     "(PCC.AD.female+PCC.AD.male)/2-(PCC.CONTROL.female+PCC.CONTROL.male)/2",
+                                     "(PCC.AD.female+PCC.CONTROL.female)/2-(PCC.AD.male+PCC.CONTROL.male)/2",
+                                     "(PCC.AD.female-PCC.CONTROL.female)/2-(PCC.AD.male-PCC.CONTROL.male)/2",
+                                     "PCC.AD.female-PCC.CONTROL.female",
+                                     "PCC.AD.male-PCC.CONTROL.male"),
                          levels = colnames(FIT$coefficients))
 colnames(contrast) = c('ACC.AD.MALE-ACC.CONTROL.MALE',
                        'ACC.AD.FEMALE-ACC.CONTROL.FEMALE',
@@ -1347,19 +1350,19 @@ stopCluster(cl)
 [Github](`r thisFile`)
 
 ```{r knitmd, eval=FALSE, cache=FALSE, include=FALSE}
-reticulate::use_python("/usr/bin/python", required = TRUE)
-synapseclient <- reticulate::import("synapseclient")
-syn_temp <- synapseclient$Synapse()
-syn_temp$login()
-
-#_ Set this Variable to filter Rin > 5 _#
-RIN_Filt <- FALSE
-#_ Set this Variable to use sageseqr vals _#
-SageSeqR <- FALSE
-
-setwd("~/TWAS/code/")
-source("~/TWAS/utilityFunctions/knitfile2synapseClient.R")
-source("~/TWAS/utilityFunctions/hook_synapseMdSyntax_plot.R")
+  reticulate::use_python("/usr/bin/python", required = TRUE)
+  synapseclient <- reticulate::import("synapseclient")
+  syn_temp <- synapseclient$Synapse()
+  syn_temp$login()
+  
+  #_ Set this Variable to filter Rin > 5 _#
+  RIN_Filt <- FALSE
+  #_ Set this Variable to use sageseqr vals _#
+  SageSeqR <- FALSE
+  
+  setwd("~/TWAS/code/")
+  source("~/TWAS/utilityFunctions/knitfile2synapseClient.R")
+  source("~/TWAS/utilityFunctions/hook_synapseMdSyntax_plot.R")
 
 createAndKnitToFolderEntityClient(file = "2020_12_09_ROSMAP_RinEQGt5Cohort_Regress_hg38.Rmd",
                                           parentId ="syn23640229",
