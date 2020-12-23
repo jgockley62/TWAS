@@ -126,6 +126,27 @@ ALL_USED_IDs <- c( Meta_ID, ALL_USED_IDs )
 Meta_OBJ <- syn_temp$get( Meta_ID, version = 1 )
 Meta <- load( Meta_OBJ$path )
 
+clean_md$diagnosis <- as.character('OTHER')
+clean_md$diagnosis[ as.numeric(as.character(clean_md$cogdx)) == 1 & 
+                    as.numeric(as.character(clean_md$braaksc)) <= 3 & 
+                    as.numeric(as.character(clean_md$ceradsc)) >= 3] <- as.character('CONTROL')
+
+
+clean_md$diagnosis[as.numeric(as.character(clean_md$cogdx)) == 4&
+                   as.numeric(as.character(clean_md$braaksc)) >= 4 & 
+                   as.numeric(as.character(clean_md$ceradsc)) <= 2] = as.character('AD')
+clean_md$diagnosis <- as.factor(clean_md$diagnosis)
+
+import_metadata$diagnosis <- as.character('OTHER')
+import_metadata$diagnosis[ as.numeric(as.character(import_metadata$cogdx)) == 1 & 
+                           as.numeric(as.character(import_metadata$braaksc)) <= 3 &
+                           as.numeric(as.character(import_metadata$ceradsc)) >= 3 ] = 'CONTROL'
+
+import_metadata$diagnosis[ as.numeric(as.character(import_metadata$cogdx)) == 4 & 
+                           as.numeric(as.character(import_metadata$braaksc)) >= 4 & 
+                           as.numeric(as.character(import_metadata$ceradsc)) <= 2] = 'AD'
+import_metadata$diagnosis <- as.factor(import_metadata$diagnosis)
+
 Meta <- clean_md
 METADATA <- Meta[ ,c( "individualID", "apoe4", "batch", "notes", "tissue", "diagnosis", "race", "pmi", "sex", "race", "spanish", "braaksc", "ceradsc", "cogdx", "dcfdx_lv", "pmi", "rincontinuous", "rin2", "age_death", "pct_pf_reads_aligned", "pct_coding_bases", "pct_intergenic_bases", "pct_intronic_bases" ) ]
 
@@ -1365,22 +1386,22 @@ stopCluster(cl)
 [Github](`r thisFile`)
 
 ```{r knitmd, eval=FALSE, cache=FALSE, include=FALSE}
-reticulate::use_python("/usr/bin/python", required = TRUE)
-synapseclient <- reticulate::import("synapseclient")
-syn_temp <- synapseclient$Synapse()
-syn_temp$login()
-
-#_ Set this Variable to filter Rin > 5 _#
-RIN_Filt <- FALSE
-#_ Set this Variable to use sageseqr vals _#
-SageSeqR <- FALSE
-
-setwd("~/TWAS/code/")
-source("~/TWAS/utilityFunctions/knitfile2synapseClient.R")
-source("~/TWAS/utilityFunctions/hook_synapseMdSyntax_plot.R")
-
-createAndKnitToFolderEntityClient(file = "2020_12_09_ROSMAP_RinEQGt5Cohort_sageseqr_hg38.Rmd",
-                                          parentId ="syn23640229",
-                                          folderName = 'RinOver5_RosMap_sageseqr')
+  reticulate::use_python("/usr/bin/python", required = TRUE)
+  synapseclient <- reticulate::import("synapseclient")
+  syn_temp <- synapseclient$Synapse()
+  syn_temp$login()
+  
+  #_ Set this Variable to filter Rin > 5 _#
+  RIN_Filt <- FALSE
+  #_ Set this Variable to use sageseqr vals _#
+  SageSeqR <- FALSE
+  
+  setwd("~/TWAS/code/")
+  source("~/TWAS/utilityFunctions/knitfile2synapseClient.R")
+  source("~/TWAS/utilityFunctions/hook_synapseMdSyntax_plot.R")
+  
+  createAndKnitToFolderEntityClient(file = "2020_12_09_ROSMAP_RinEQGt5Cohort_sageseqr_hg38.Rmd",
+                                            parentId ="syn23640229",
+                                            folderName = 'RinOver5_RosMap_sageseqr')
 
 ```

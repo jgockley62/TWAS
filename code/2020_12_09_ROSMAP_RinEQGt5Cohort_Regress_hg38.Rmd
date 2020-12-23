@@ -1364,7 +1364,7 @@ stopCluster(cl)
   source("~/TWAS/utilityFunctions/knitfile2synapseClient.R")
   source("~/TWAS/utilityFunctions/hook_synapseMdSyntax_plot.R")
 
-createAndKnitToFolderEntityClient(file = "2020_12_09_ROSMAP_RinEQGt5Cohort_Regress_hg38.Rmd",
+  createAndKnitToFolderEntityClient(file = "2020_12_09_ROSMAP_RinEQGt5Cohort_Regress_hg38.Rmd",
                                           parentId ="syn23640229",
                                           folderName = 'RinOver5_RosMap_OldCode')
 
