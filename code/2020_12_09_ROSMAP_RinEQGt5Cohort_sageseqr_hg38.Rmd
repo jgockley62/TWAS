@@ -126,10 +126,10 @@ ALL_USED_IDs <- c( Meta_ID, ALL_USED_IDs )
 Meta_OBJ <- syn_temp$get( Meta_ID, version = 1 )
 Meta <- load( Meta_OBJ$path )
 
-clean_md$diagnosis <- as.character('OTHER')
+clean_md$diagnosis <- as.character('other')
 clean_md$diagnosis[ as.numeric(as.character(clean_md$cogdx)) == 1 & 
                     as.numeric(as.character(clean_md$braaksc)) <= 3 & 
-                    as.numeric(as.character(clean_md$ceradsc)) >= 3] <- as.character('CONTROL')
+                    as.numeric(as.character(clean_md$ceradsc)) >= 3] <- as.character('control')
 
 
 clean_md$diagnosis[as.numeric(as.character(clean_md$cogdx)) == 4&
@@ -137,10 +137,10 @@ clean_md$diagnosis[as.numeric(as.character(clean_md$cogdx)) == 4&
                    as.numeric(as.character(clean_md$ceradsc)) <= 2] = as.character('AD')
 clean_md$diagnosis <- as.factor(clean_md$diagnosis)
 
-import_metadata$diagnosis <- as.character('OTHER')
+import_metadata$diagnosis <- as.character('other')
 import_metadata$diagnosis[ as.numeric(as.character(import_metadata$cogdx)) == 1 & 
                            as.numeric(as.character(import_metadata$braaksc)) <= 3 &
-                           as.numeric(as.character(import_metadata$ceradsc)) >= 3 ] = 'CONTROL'
+                           as.numeric(as.character(import_metadata$ceradsc)) >= 3 ] = 'control'
 
 import_metadata$diagnosis[ as.numeric(as.character(import_metadata$cogdx)) == 4 & 
                            as.numeric(as.character(import_metadata$braaksc)) >= 4 & 
