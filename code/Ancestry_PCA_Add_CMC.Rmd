@@ -1,0 +1,1029 @@
+---
+title: "Process Genotypes For Ancestry Analysis"
+author: "JKG"
+date: "9/18/2019"
+output: pdf_document
+  chunk_output_type: console
+---
+
+```{r libs, include=FALSE}
+knitr::opts_chunk$set(
+  #python.reticulate=FALSE,
+  echo=FALSE,
+  warning=FALSE,
+  message=FALSE,
+  error = FALSE,
+  tidy = FALSE,
+  cache = TRUE,
+  results='hide')
+```
+##Before running 
+Run the following in docker exec -it <CONTAINER> /bin/bash 
+chmod 777 /root
+mv TWAS/ /home/<USR>/TWAS/
+chown -hR <GID>:<USR> /home/<USR>/TWAS/
+maybe# ln -s /usr/bin/python /usr/local/bin/python
+
+
+## Login to Synapse Will need to replace with your credentials
+```{bash Login, echo=T, results='hide', eval=FALSE}
+#source /root/.bashrc
+synapse login -u <USR> -p <PSWD> --rememberMe
+
+#Alternativly you can setup a credentials file as such:
+touch ~/.synapseConfig
+echo "[authentication]" >> ~/.synapseConfig
+echo "username = <USR>" >> ~/.synapseConfig
+echo "password = <PASWD>" >> ~/.synapseConfig
+```
+
+## Pull Plink and Plink2
+run before sourcing markdown file as plink2 binary url keeps changing.
+```{bash PLINKSetup, results='hide', eval=F, echo=TRUE}
+mkdir ~/TWAS/bin
+wget -q -P ~/TWAS/bin http://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20190617.zip 
+unzip -d ~/TWAS/bin/ ~/TWAS/bin/plink_linux_x86_64_20190617.zip
+wget -q -P ~/TWAS/bin http://s3.amazonaws.com/plink2-assets/plink2_linux_x86_64_20191005.zip
+unzip -d ~/TWAS/bin/ ~/TWAS/bin/plink2_linux_x86_64_20191005.zip
+
+wget -q -P ~/TWAS/code http://www.compgen.pitt.edu/GemTools/GemTools.R
+
+rm ~/TWAS/bin/*.zip
+rm ~/TWAS/bin/toy.*
+rm ~/TWAS/bin/LICENSE
+```
+
+## Pull 1000Genomes down and process
+* Pull out reference populations (CEU, YRI, CHB, JPT)
+```{bash pull_1000Genomes, echo=T, results='hide', cache = FALSE}
+#source /root/.bashrc
+PATH=$PATH:~/TWAS/bin/
+#PATH=$PATH:TWAS/bin/
+CORES=`expr $(nproc) - 2`
+
+#ID Sample list of needed Ref Populations
+wget ftp://ftp-trace.ncbi.nih.gov/1000genomes/ftp/phase1/analysis_results/integrated_call_sets/integrated_call_samples.20101123.ALL.panel
+
+ftp://ftp-trace.ncbi.nih.gov/1000genomes/ftp/phase1/analysis_results/integrated_call_sets/
+
+grep CEU integrated_call_samples.20101123.ALL.panel | cut -f1 > CEU.samples.list
+grep YRI integrated_call_samples.20101123.ALL.panel | cut -f1 > YRI.samples.list
+grep CHB integrated_call_samples.20101123.ALL.panel | cut -f1 > CHB.samples.list
+grep JPT integrated_call_samples.20101123.ALL.panel | cut -f1 > JPT.samples.list
+
+#Make Plink IDV List of all 1000G Ref Samps to pull
+cat CEU.samples.list YRI.samples.list CHB.samples.list JPT.samples.list > 1000G_IDV.list
+paste 1000G_IDV.list 1000G_IDV.list > foo.txt
+mv foo.txt 1000G_IDV.list
+
+##Pull The LDREF Panel SNPS
+#Pull LDREF Data
+wget https://data.broadinstitute.org/alkesgroup/FUSION/LDREF.tar.bz2
+tar xjvf LDREF.tar.bz2
+
+#Merge  LDREF Data
+for i in {2..22} 
+do 
+    echo LDREF/1000G.EUR.$i>> MergedChrs.txt
+done 
+plink --bfile LDREF/1000G.EUR.1 --threads $CORES --silent --merge-list MergedChrs.txt --make-bed --allow-no-sex --out TotalLDRef
+
+#Write SNP List for LDREF Data
+plink --threads $CORES --bfile TotalLDRef --silent --write-snplist --out LDREF_SNPs
+
+#Reformat SNP List for plink filter.txt
+awk '{ print $1"\t"$4"\t"$4"\t"$2 }' TotalLDRef.bim > LDREF_SNPs.txt
+
+rm -r LDREF/
+
+#Pull 1000G Data, convert to plink, Filt for INDV and SNPs
+for i in {1..22}
+do
+	wget ftp://ftp-trace.ncbi.nih.gov/1000genomes/ftp/phase1/analysis_results/integrated_call_sets/ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf.gz
+
+    plink --vcf ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf.gz --snps-only --extract LDREF_SNPs.txt --keep 1000G_IDV.list --silent --threads $CORES --make-bed --out 1000Genomes_chr$i
+  rm ALL.chr$i\.integrated_phase1_v3.20101123.snps_indels_svs.genotypes.vcf.gz
+done
+
+#Merge All Plink Chr Files 
+for i in {2..22}
+do
+  echo 1000Genomes_chr$i >> Merge.list
+done
+
+plink --bfile 1000Genomes_chr1 --merge-list Merge.list --silent --make-bed --out 1000Genomes_Merged
+
+#Store 1000G Populations
+mkdir 1000G_RefSamps
+mv CEU.samples.list 1000G_RefSamps/
+mv YRI.samples.list 1000G_RefSamps/
+mv JPT.samples.list 1000G_RefSamps/
+mv CHB.samples.list 1000G_RefSamps/
+
+#Clean Working Directory
+rm 1000Genomes_chr*
+rm *.list
+rm *.panel
+rm LDREF.tar.bz2
+rm MergedChrs.txt
+```
+
+## Process MSBB WGS Data
+* Pull VCFs from Synapse
+* Convert to plink
+* Merge across chromosomes
+* Filter for 1000G SNPs
+```{bash ProcessMSBB, echo=T, results='hide', cache = FALSE}
+#source /root/.bashrc
+PATH=$PATH:~/TWAS/bin/
+CORES=`expr $(nproc) - 2`
+
+##Pull VCF Files from Synapse & Convert VCFs to plink
+mkdir VCF
+mkdir GWAS_Plink
+
+declare -A SynArr
+Arr["1"]=syn11714454
+Arr["2"]=syn11714459
+Arr["3"]=syn11714456
+Arr["4"]=syn11714491
+Arr["5"]=syn11714462
+Arr["6"]=syn11714481
+Arr["7"]=syn11714486
+Arr["8"]=syn11714490
+Arr["9"]=syn11714471
+Arr["10"]=syn11714487
+Arr["11"]=syn11714464
+Arr["12"]=syn11714494
+Arr["13"]=syn11714485
+Arr["14"]=syn11714482
+Arr["15"]=syn11714499
+Arr["16"]=syn11714474
+Arr["17"]=syn11714473
+Arr["18"]=syn11714493
+Arr["19"]=syn11714451
+Arr["20"]=syn11714496
+Arr["21"]=syn11714458
+Arr["22"]=syn11714483
+
+declare -A SynArr
+ARR["1"]=syn11714463
+ARR["2"]=syn11714480
+ARR["3"]=syn11714492
+ARR["4"]=syn11714452
+ARR["5"]=syn11714488
+ARR["6"]=syn11714484
+ARR["7"]=syn11714465
+ARR["8"]=syn11714475
+ARR["9"]=syn11714450
+ARR["10"]=syn11714479
+ARR["11"]=syn11714477
+ARR["12"]=syn11714468
+ARR["13"]=syn11714469
+ARR["14"]=syn11714470
+ARR["15"]=syn11714461
+ARR["16"]=syn11714455
+ARR["17"]=syn11714467
+ARR["18"]=syn11714495
+ARR["19"]=syn11714497
+ARR["20"]=syn11714478
+ARR["21"]=syn11714460
+ARR["22"]=syn11714472
+
+for i in {1..22}
+do
+	
+	synapse get ${Arr[$i]} --downloadLocation VCF/
+  synapse get ${ARR[$i]} --downloadLocation VCF/
+  plink --vcf VCF/NIA_JG_1898_samples_GRM_WGS_b37_JointAnalysis01_2017-12-08_$i\.recalibrated_variants.MSSM.vcf.gz --threads $CORES --make-bed --silent --allow-no-sex --snps-only --out GWAS_Plink/MSSB_Chr_$i
+  rm VCF/*.vcf.gz
+  rm VCF/*.vcf.gz.tbi
+done
+
+#Replace the "." IDs with a uniq ID
+for i in {22..1}
+do
+  awk '{ print $1"\t"$1"_"$4"\t"$3"\t"$4"\t"$5"\t"$6 }' GWAS_Plink/MSSB_Chr_$i\.bim > foo.txt
+  mv foo.txt GWAS_Plink/MSSB_Chr_$i\.bim
+done
+
+#Make an LD_Ref SNPList with matching name Schema
+awk '{print $1"\t"$2"\t"$3"\t"$1"_"$2 }' LDREF_SNPs.txt > MSBB_LD_SNPS.txt
+
+##Merge Chromsomes in Plink Format 
+for i in {2..22} 
+do 
+    echo GWAS_Plink/MSSB_Chr_$i >> MergedGWAS.txt
+done 
+
+plink --threads $CORES --bfile GWAS_Plink/MSSB_Chr_1 --silent --merge-list MergedGWAS.txt --extract MSBB_LD_SNPS.txt --make-bed --allow-no-sex --out GWASTotal
+#rm -r GWAS_Plink/
+#rm MergedGWAS.txt
+
+```
+
+### ReName the MSBB SNPS so the can be combined
+```{python ReNamer_ONE, echo=F, results='hide'}
+import sys
+import os
+import re
+
+InFile = 'TotalLDRef.bim'
+InFileb = 'GWASTotal.bim' #LDREF_FiltSNPs.bim
+
+RS_IDs = {}
+RS_Pos = {}
+
+F1 = open(InFile)
+for line in F1:
+	LINE = line.rstrip('\r\n')
+	lst = LINE.split('\t')
+
+	RS_IDs[ ''.join([lst[0], '_', lst[3]]) ] = lst[1]
+	RS_Pos[ ''.join([lst[0], '_', lst[3]]) ] = lst[2]
+F1.close()
+
+#Open Output
+OUT = open( ''.join([ InFileb.replace(".bim", ""), 'Renamed.bim']), 'w' )
+
+F1 = open(InFileb)
+for line in F1:
+	LINE = line.rstrip('\r\n')
+	lst = LINE.split('\t')
+
+	Name = RS_IDs[ ''.join([ lst[0], "_", lst[3] ])]
+	Post = RS_Pos[ ''.join([ lst[0], "_", lst[3] ])]
+
+	Entry = '\t'.join([ lst[0], Name, Post, lst[3], lst[4], lst[5] ])
+	print >>OUT, Entry
+
+F1.close()
+OUT.close()
+```
+
+### Finalize the MSBB LD SNP-Set Derived from WGS
+```{bash FinalizeMSBB, echo=T, results='hide', cache = FALSE}
+#source /root/.bashrc
+PATH=$PATH:~/TWAS/bin/
+CORES=`expr $(nproc) - 2`
+
+#Check the SNP-Set
+##These numbers should be equal:
+grep 'rs' GWASTotalRenamed.bim | wc -l
+cat GWASTotalRenamed.bim | wc -l 
+
+##This Number should be zero:
+Repod=$(awk '{print $2}' GWASTotalRenamed.bim | grep "\." - | wc -l)
+if [ "$Repod" -eq "0" ]; then
+   cp GWASTotalRenamed.bim GWASTotal.bim;
+fi
+if [ "$Repod" -ne "0" ]; then
+   echo $Repod" lines could've failed Translation"
+fi
+plink --bfile GWASTotal --silent --threads $CORES --make-bed --out MSBB_Preliminary_Genos
+#rm GWASTotal.*
+```
+
+## Process MAYO Genotyping Data
+```{bash MAYO, echo=T, results='hide', cache = FALSE}
+#source /root/.bashrc
+PATH=$PATH:~/TWAS/bin/
+CORES=`expr $(nproc) - 2`
+
+#Download
+mkdir Mayo
+synapse get -r syn8650955 --downloadLocation Mayo/
+
+plink --bfile Mayo/MayoRNAseq_RNAseq_Genome-Wide_Genotypes_HRCimputed --threads $CORES --extract LDREF_SNPs.txt --range --make-bed --out Mayo_LDREF_Filt
+
+rm -r Mayo/
+#SNPS REMAINING COMPARED TO TOTAL LDREF SET:
+##1,187,249 out of 1,190,321 (  99.74% )
+```
+
+### ReName the Mayo SNPS so the can be combined
+```{python ReNamer_Two_Mayo, echo=T, results='hide'}
+import sys
+import os
+import re
+
+InFile = 'TotalLDRef.bim'
+InFileb = 'Mayo_LDREF_Filt.bim'
+
+RS_IDs = {}
+RS_Pos = {}
+
+F1 = open(InFile)
+for line in F1:
+	LINE = line.rstrip('\r\n')
+	lst = LINE.split('\t')
+
+	RS_IDs[ ''.join([lst[0], '_', lst[3]]) ] = lst[1]
+	RS_Pos[ ''.join([lst[0], '_', lst[3]]) ] = lst[2]
+F1.close()
+
+
+#Open Output
+OUT = open( ''.join([ InFileb.replace(".bim", ""), 'Renamed.bim']), 'w' )
+
+F1 = open(InFileb)
+for line in F1:
+	LINE = line.rstrip('\r\n')
+	lst = LINE.split('\t')
+
+	Name = RS_IDs[ ''.join([ lst[0], "_", lst[3] ])]
+	Post = RS_Pos[ ''.join([ lst[0], "_", lst[3] ])]
+
+	Entry = '\t'.join([ lst[0], Name, Post, lst[3], lst[4], lst[5] ])
+	print >>OUT, Entry
+
+F1.close()
+OUT.close()
+```
+
+### Finalize the Mayo LD SNP-Set Derived from imputed genotyping
+```{bash CheckMayo, echo=T, results='hide', cache = FALSE}
+#source /root/.bashrc
+PATH=$PATH:~/TWAS/bin/
+CORES=`expr $(nproc) - 2`
+
+#Check the SNP-Set
+##These numbers should be equal:
+grep 'rs' Mayo_LDREF_FiltRenamed.bim | wc -l
+cat Mayo_LDREF_Filt.bim | wc -l 
+
+##This Number should be zero:
+Repod=$(awk '{print $2}' Mayo_LDREF_FiltRenamed.bim | grep "\." - | wc -l)
+if [ "$Repod" -eq "0" ]; then
+   mv Mayo_LDREF_FiltRenamed.bim Mayo_LDREF_Filt.bim;
+fi
+if [ "$Repod" -ne "0" ]; then
+   echo $Repod" lines could've failed Translation"
+fi
+plink --bfile Mayo_LDREF_Filt --silent --threads $CORES --make-bed --out Mayo_Preliminary_Genos
+rm Mayo_LDREF_Filt.*
+```
+
+## Process ROSMAP Genotyping Data
+```{bash DosageToHardCalls, echo=T, results='hide', cache = FALSE}
+#source /root/.bashrc
+PATH=$PATH:~/TWAS/bin/
+CORES=`expr $(nproc) - 2`
+
+#Make Room for ROMAP Data
+rm -r VCF/
+rm -r GWAS_Plink/
+
+#Synapse gets:
+declare -A arr
+arr["1"]=syn5879161
+arr["2"]=syn5879456
+arr["3"]=syn5879461
+arr["4"]=syn5879463
+arr["5"]=syn5879470
+arr["6"]=syn5879472
+arr["7"]=syn5879473
+arr["8"]=syn5879559
+arr["9"]=syn5879628
+arr["10"]=syn5879677
+arr["11"]=syn5879748
+arr["12"]=syn5879792
+arr["13"]=syn5879812
+arr["14"]=syn5879827
+arr["15"]=syn5879828
+arr["16"]=syn5879830
+arr["17"]=syn5879832
+arr["18"]=syn5879834
+arr["19"]=syn5879835
+arr["20"]=syn5879836
+arr["21"]=syn5879837
+arr["22"]=syn5879838
+
+#Pull FAM File
+synapse get syn20809809
+
+plink --bfile MSBB_Preliminary_Genos --write-snplist --out KEEPERS
+
+#Loop Through chromosomes and Process
+for i in {1..22}
+#for i in {2..12}
+do
+	
+	synapse get ${arr[$i]}
+
+	chr=$i
+	echo "1 AMP-AD_ROSMAP_Rush-Broad_AffymetrixGenechip6_Imputed_chr"$chr".dosage.gz" > b.txt
+  
+  #Write a Dosage File
+	plink --threads $CORES --fam Updated_Actual_Fam.fam --silent --dosage b.txt list noheader format=1 --write-dosage
+  
+  #Convert to plink hard calls 
+	plink2 --threads $CORES --fam Updated_Actual_Fam.fam --silent --import-dosage plink.out.dosage format=1 --hard-call-threshold 0.1 --make-bed --extract KEEPERS.snplist --out AMP-AD_ROSMAP_Rush-Broad_AffymetrixGenechip6_Imputed_chr$chr
+	
+	#Clean out dosage to save disk space!
+	rm plink.out.dosage
+  rm AMP-AD_ROSMAP_Rush-Broad_AffymetrixGenechip6_Imputed_chr$i\.dosage.gz
+done
+rm b.txt
+
+plink --threads $CORES --bfile AMP-AD_ROSMAP_Rush-Broad_AffymetrixGenechip6_Imputed_chr1 --bmerge AMP-AD_ROSMAP_Rush-Broad_AffymetrixGenechip6_Imputed_chr2.bed AMP-AD_ROSMAP_Rush-Broad_AffymetrixGenechip6_Imputed_chr2.bim AMP-AD_ROSMAP_Rush-Broad_AffymetrixGenechip6_Imputed_chr2.fam --make-bed --allow-no-sex --out ROSMAP_Temp
+
+rm ROSMAP_Temp.log
+mv ROSMAP_Temp.bed Temp.bed
+mv ROSMAP_Temp.bim Temp.bim
+mv ROSMAP_Temp.fam Temp.fam
+
+rm Broad_AffymetrixGenechip6_Imputed_chr2.bed
+rm Broad_AffymetrixGenechip6_Imputed_chr2.bim
+rm Broad_AffymetrixGenechip6_Imputed_chr2.fam
+rm Broad_AffymetrixGenechip6_Imputed_chr1.bed
+rm Broad_AffymetrixGenechip6_Imputed_chr1.bim
+rm Broad_AffymetrixGenechip6_Imputed_chr1.fam
+
+for i in {3..22}
+do
+  
+  plink --threads $CORES --bfile AMP-AD_ROSMAP_Rush-Broad_AffymetrixGenechip6_Imputed_chr$i --bmerge Temp.bed Temp.bim Temp.fam --make-bed --allow-no-sex --extract KEEPERS.snplist --out ROSMAP_Temp
+
+  #Remove the old indv chr files
+  #rm AMP-AD_ROSMAP_Rush-Broad_AffymetrixGenechip6_Imputed_chr$i\.bed
+  #rm AMP-AD_ROSMAP_Rush-Broad_AffymetrixGenechip6_Imputed_chr$i\.bim
+  #rm AMP-AD_ROSMAP_Rush-Broad_AffymetrixGenechip6_Imputed_chr$i\.fam
+  #rm AMP-AD_ROSMAP_Rush-Broad_AffymetrixGenechip6_Imputed_chr$i\.log
+  
+  #Move New Back to Temp
+  mv ROSMAP_Temp.bed Temp.bed
+  mv ROSMAP_Temp.bim Temp.bim
+  mv ROSMAP_Temp.fam Temp.fam
+  mv ROSMAP_Temp.log Temp.log
+
+done
+
+mv Temp.bed ROSMAP_Temp.bed 
+mv Temp.bim ROSMAP_Temp.bim 
+mv Temp.fam ROSMAP_Temp.fam 
+mv Temp.log ROSMAP_Temp.log
+
+```
+
+#### Temp Break
+```{bash FOO, echo=T, results='hide', cache = FALSE}
+PATH=$PATH:~/TWAS/bin/
+CORES=`expr $(nproc) - 2`
+
+#rm -r AMP-AD_ROSMAP_Rush-Broad_AffymetrixGenechip6_Imputed_chr*
+#rm MergedGWAS.txt
+
+grep 'rs' ROSMAP_Temp.bim | awk '{ print $2 }' - | sort - > RSIDS.txt
+awk '{ print $4 }' LDREF_SNPs.txt | sort - > RefIDs.txt
+
+comm -12 RefIDs.txt RSIDS.txt > RosMapKeeps.txt
+
+plink --threads $CORES --bfile ROSMAP_Temp --extract RosMapKeeps.txt --silent --make-bed --allow-no-sex --out ROSMAP_temp
+#rm ROSMAP_Temp.*
+rm RSIDS.txt
+rm RefIDs.txt
+#1705 people pass mind
+#1068685 of 1187582 snps pass --geno 0.1
+```
+
+### ReName the Mayo SNPS so the can be combined
+```{python ReNamer_Three_Rosmap, echo=T, results='hide'}
+import sys
+import os
+import re
+
+InFile = 'TotalLDRef.bim'
+InFileb = 'ROSMAP_temp.bim'
+
+RS_Chr = {}
+RS_Pos = {}
+RS_BP ={}
+
+F1 = open(InFile)
+for line in F1:
+	LINE = line.rstrip('\r\n')
+	lst = LINE.split('\t')
+
+	RS_Chr[ ''.join([lst[1], '_', lst[4], '_', lst[5]]) ] = lst[0]
+	RS_Pos[ ''.join([lst[1], '_', lst[4], '_', lst[5]]) ] = lst[2]
+	RS_BP[ ''.join([lst[1], '_', lst[4], '_', lst[5]]) ] = lst[3]
+F1.close()
+
+#Open Output
+OUT = open( ''.join([ InFileb.replace(".bim", ""), 'Renamed.bim']), 'w' )
+OUT2 = open( 'FailedSNPS.txt', 'w' )
+
+F1 = open(InFileb)
+for line in F1:
+	LINE = line.rstrip('\r\n')
+	lst = LINE.split('\t')
+	LOC = ''.join([ lst[1], '_', lst[4], '_', lst[5] ])
+	chrm = RS_Chr.get( LOC, None )
+	pos = RS_Pos.get( LOC, None )
+	bp = RS_BP.get( LOC, None )
+
+	if( chrm == None ):
+	  print >>OUT, LINE
+	  print >>OUT2, lst[1]
+	else:
+	  Entry = '\t'.join([ chrm, lst[1], pos, bp, lst[4], lst[5] ])
+	  print >>OUT, Entry
+
+F1.close()
+OUT.close()
+OUT2.close()
+```
+
+##CMC Genotypes
+```{bash CMC, cache = FALSE, echo=T, results='hide'}
+CORES=`expr $(nproc) - 2`
+PATH=$PATH:~/TWAS/bin/
+
+#Pull Data with needed SNPS only and fiter GTEx for that SNP List
+synapse get syn20835005
+synapse get syn20835007
+synapse get syn20834996
+plink --threads $CORES --bfile All_CEU_ToTrainForTWAS --write-snplist
+
+mkdir CMC_Genos
+synapse get syn10537112 --recursive --downloadLocation CMC_Genos/
+
+mkdir CMC_Filt_Genos
+touch merge.txt
+#Pull out Snps
+for i in {1..22}
+  do
+    #--positions plink.snplist 
+    bcftools norm --threads $CORES --rm-dup snps -Oz CMC_Genos/CMC_chr$i.dose.vcf.gz > CMC_Filt_Genos/Filt_CMC_chr$i.dose.vcf.gz
+    vcftools --gzvcf CMC_Filt_Genos/Filt_CMC_chr$i.dose.vcf.gz --plink --out CMC_Filt_Genos/Init_Filtered_chr$i
+    echo 'CMC_Filt_Genos/Init_Filtered_chr'$i'.ped CMC_Filt_Genos/Init_Filtered_chr'$i'.map' >> merge.txt
+  done
+grep -v 'chr1.ped' merge.txt > foo
+mv foo merge.txt
+
+#Merge Genotype
+plink --threads $CORES --file CMC_Filt_Genos/Init_Filtered_chr1 --merge-list merge.txt --make-bed --out Merged_Initial_CMC_Geno
+
+#Remove old Map/Ped Files
+rm CMC_Filt_Genos/Init_Filtered_chr*.map
+rm CMC_Filt_Genos/Init_Filtered_chr*.ped
+```
+
+
+### ReName the CMC SNPS so the can be combined
+```{python ReNamer_ONE, echo=F, results='hide',python.reticulate=T}
+import sys
+import os
+import re
+
+InFile = 'All_CEU_ToTrainForTWAS.bim'
+InFileb = 'Merged_Initial_CMC_Geno.bim' #LDREF_FiltSNPs.bim
+
+RS_IDs = {}
+RS_Pos = {}
+
+F1 = open(InFile)
+for line in F1:
+	LINE = line.rstrip('\r\n')
+	lst = LINE.split('\t')
+	RS_IDs[ ''.join([lst[0], '_', lst[3]]) ] = lst[1]
+	RS_Pos[ ''.join([lst[0], '_', lst[3]]) ] = lst[2]
+F1.close()
+
+#Open Output
+OUT = open( ''.join([ InFileb.replace(".bim", ""), 'Renamed.bim']), 'w' )
+
+F1 = open(InFileb)
+for line in F1:
+	LINE = line.rstrip('\r\n')
+	lst = LINE.split('\t')
+	if( ''.join([ lst[0], "_", lst[3] ]) in RS_IDs):
+		Name = RS_IDs[ ''.join([ lst[0], "_", lst[3] ])]
+		Entry = '\t'.join([ lst[0], Name, lst[2], lst[3], lst[4], lst[5] ])
+		print >>OUT, Entry
+	else:
+		print >>OUT, LINE
+
+F1.close()
+OUT.close()
+```
+
+##Merge the Genotype Sets and Preform PCA
+```{bash MergeAndCall, cache = FALSE, echo=T, results='hide'}
+#source /root/.bashrc
+PATH=$PATH:~/TWAS/bin/
+CORES=`expr $(nproc) - 2`
+
+#Replace CMC names with renamed
+mv Merged_Initial_CMC_GenoRenamed.bim Merged_Initial_CMC_Geno.bim 
+
+mv ROSMAP_tempRenamed.bim ROSMAP_temp.bim
+plink --threads $CORES --bfile ROSMAP_temp --silent --exclude FailedSNPS.txt --make-bed --allow-no-sex --out ROSMAP_Temp
+#rm ROSMAP_temp.*
+
+#Check ROSMAP SNP-Set
+##These numbers should be equal:
+grep 'rs' ROSMAP_Temp.bim | wc -l
+wc -l ROSMAP_Temp.bim
+
+##This Number should be zero:
+Repod=$(awk '{print $2}' ROSMAP_Temp.bim | grep "\." - | wc -l)
+
+if [ "$Repod" -eq "0" ]; then
+  plink --threads $CORES --bfile ROSMAP_Temp --silent --make-bed --allow-no-sex --out ROSMAP_Preliminary_Genos
+  rm ROSMAP_Temp.*
+fi
+if [ "$Repod" -ne "0" ]; then
+   echo $Repod" lines could've failed Translation"
+fi
+
+#Overly Cautious ID of common SNPs as the 1000G Data set is much smaller
+##Write & sort SNP List
+plink --threads $CORES --silent --bfile ROSMAP_Preliminary_Genos --write-snplist --out RosMap
+plink --threads $CORES --silent --bfile MSBB_Preliminary_Genos --write-snplist --out MSBB
+plink --threads $CORES --silent --bfile Mayo_Preliminary_Genos --write-snplist --out Mayo
+plink --threads $CORES --silent --bfile 1000Genomes_Merged --write-snplist --out 1000G
+
+cat MSBB.snplist | sort > MSBB.srt.snplist
+cat RosMap.snplist | sort > RosMap.srt.snplist
+cat Mayo.snplist | sort > Mayo.srt.snplist
+cat 1000G.snplist | sort > 1000G.srt.snplist
+
+#ID Common SNPS in all datasets
+comm -12 MSBB.srt.snplist 1000G.srt.snplist | comm -12 Mayo.srt.snplist - | comm -12 RosMap.srt.snplist - > All_CommonSNPs.snplist
+wc -l All_CommonSNPs.snplist
+
+##ID A/T C/G SNPS for removal (Not sure if I need to do this for the TWAS as well..)
+#Find and remove A/T C/G SNPS
+grep -P "A\tT$" 1000Genomes_Merged.bim | awk '{ print $2 }' - > remove.snplist
+grep -P "T\tA$" 1000Genomes_Merged.bim | awk '{ print $2 }' - >> remove.snplist
+grep -P "G\tC$" 1000Genomes_Merged.bim | awk '{ print $2 }' - >> remove.snplist
+grep -P "C\tG$" 1000Genomes_Merged.bim | awk '{ print $2 }' - >> remove.snplist
+wc -l remove.snplist
+
+echo "ROSMAP_Preliminary_Genos" > Merge.list
+echo "MSBB_Preliminary_Genos" >> Merge.list
+echo "Mayo_Preliminary_Genos" >> Merge.list
+
+plink --threads $CORES --bfile 1000Genomes_Merged --silent --merge-list Merge.list --allow-no-sex --exclude remove.snplist --extract All_CommonSNPs.snplist --make-bed --out Merged_GenoTypes
+
+cat Merged_GenoTypes-merge.missnp remove.snplist > Total_Remove.snplist
+wc -l Total_Remove.snplist
+
+##Try removing from all sets independently....
+plink --threads $CORES --bfile 1000Genomes_Merged --silent --exclude Total_Remove.snplist --extract All_CommonSNPs.snplist --make-bed --out 1000_4_Merge
+plink --threads $CORES --bfile ROSMAP_Preliminary_Genos --silent --exclude Total_Remove.snplist --extract All_CommonSNPs.snplist --make-bed --out ROSMAP_4_Merge
+plink --threads $CORES --bfile MSBB_Preliminary_Genos --silent --exclude Total_Remove.snplist --extract All_CommonSNPs.snplist --make-bed --out MSBB_4_Merge
+plink --threads $CORES --bfile Mayo_Preliminary_Genos --silent --exclude Total_Remove.snplist --extract All_CommonSNPs.snplist --make-bed --out Mayo_4_Merge
+plink --threads $CORES --bfile Merged_Initial_CMC_Geno --silent --exclude Total_Remove.snplist --extract All_CommonSNPs.snplist --make-bed --out CMC_4_Merge
+
+echo "ROSMAP_4_Merge" > Merge.list
+echo "MSBB_4_Merge" >> Merge.list
+echo "Mayo_4_Merge" >> Merge.list
+echo "CMC_4_Merge" >> Merge.list
+
+plink --threads $CORES --bfile 1000_4_Merge --silent --merge-list Merge.list --allow-no-sex --maf 0.01 --mind 0.1 --geno 0.1 --exclude Total_Remove.snplist --extract All_CommonSNPs.snplist --make-bed --out Merged_GenoTypes
+rm *_Preliminary_Genos.*
+
+#PCA
+plink --bfile Merged_GenoTypes --silent --threads $CORES --maf 0.01 --mind 0.1 --max-maf 0.4 --indep-pairwise 50 5 0.2 --pca var-wts --out Total_PCA
+```
+
+## Prep Input for Cluster Based on Ancestry
+```{bash CLustPrep, echo=T, cache = FALSE}
+#source /root/.bashrc
+PATH=$PATH:~/TWAS/bin/
+CORES=`expr $(nproc) - 2`
+#wget http://www.compgen.pitt.edu/GemTools/GemTools.R
+
+plink --bfile Merged_GenoTypes --threads $CORES --geno 0.0000001 --maf 0.01 --mind 0.1 --hwe 0.00001 --max-maf 0.4  --indep-pairwise 50 5 0.2 --silent --recode12 --compound-genotypes --out AllSnps4GemClust
+
+#Re-Code in 0-1-2 Allele State
+cut -d" " -f7- AllSnps4GemClust.ped > peds.txt
+perl -pe 's/([^\s]+)\s+([^\s]+)/$1$2/g' peds.txt > PEDS.txt
+cut -d" " -f 1 AllSnps4GemClust.ped > FID.txt
+cut -d" " -f 2 AllSnps4GemClust.ped > IID.txt
+paste -d " " FID.txt IID.txt > Names.txt
+
+sed -i 's/22/2/g' PEDS.txt
+sed -i 's/00/3/g' PEDS.txt
+sed -i 's/12/1/g' PEDS.txt
+sed -i 's/11/0/g' PEDS.txt
+
+paste Names.txt PEDS.txt > GemClustAllGenos.txt
+sed -i 's/\t/ /g' GemClustAllGenos.txt
+sed -i 's/  */ /g' GemClustAllGenos.txt
+
+rm peds.txt
+```
+
+##Plot PCA
+```{r PlotPCA, cache=FALSE, echo=FALSE}
+library(ggplot2)
+library(plotrix)
+library(scater)
+library(data.table)
+system( 'wget http://www.compgen.pitt.edu/GemTools/GemTools.R' )
+source('GemTools.R')
+
+#Load Eigne Vals and Calc Percent Var for first 2 Comps.
+Comps <- as.vector(read.table(file="Total_PCA.eigenval"))
+PC1_Var_exp <- Comps[1,1]/sum(Comps[,1])
+PC2_Var_exp <- Comps[2,1]/sum(Comps[,1])
+
+#Load Populations
+CEU <- read.table(file = "1000G_RefSamps/CEU.samples.list", header =F, sep ="\t")
+row.names(CEU) <- paste0(CEU[,1], "_",CEU[,1] )
+YRI <- read.table(file = "1000G_RefSamps/YRI.samples.list", header =F, sep ="\t")
+row.names(YRI) <- paste0(YRI[,1], "_",YRI[,1] )
+CHB <- read.table(file = "1000G_RefSamps/CHB.samples.list", header =F, sep ="\t")
+row.names(CHB) <- paste0(CHB[,1], "_",CHB[,1] )
+JPT <- read.table(file = "1000G_RefSamps/JPT.samples.list", header =F, sep ="\t")
+row.names(JPT) <- paste0(JPT[,1], "_",JPT[,1] )
+
+ROSMAP <- read.table(file = "ROSMAP_4_Merge.fam", header =F, sep =" ")
+row.names(ROSMAP) <- paste0(ROSMAP[,1], "_",ROSMAP[,2] )
+MSBB <- read.table(file = "MSBB_4_Merge.fam", header =F, sep =" ")
+row.names(MSBB) <- paste0(MSBB[,1], "_",MSBB[,2] )
+Mayo <- read.table(file = "Mayo_4_Merge.fam", header =F, sep =" ")
+row.names(Mayo) <- paste0(Mayo[,1], "_",Mayo[,2] )
+Ref1000G <- read.table(file = "1000_4_Merge.fam", header =F, sep =" ")
+row.names(Ref1000G) <- paste0(Ref1000G[,1], "_",Ref1000G[,2] )
+CMC <- read.table(file = "CMC_4_Merge.fam", header =F, sep =" ")
+row.names(CMC) <- paste0(CMC[,1], "_",CMC[,2] )
+
+pcs = read.table( file="Total_PCA.eigenvec")
+row.names(pcs) <- paste0(pcs$V1, "_", pcs$V2)
+pcs <- as.data.frame( pcs[,1:4] )
+colnames(pcs) <- c( "FID", "IID", "PC1", "PC2")
+
+RMs <- rep( "ROSMAP", length(row.names(ROSMAP)) )
+names(RMs) <- row.names(ROSMAP)
+MSBs = rep("MSBB", length(row.names(MSBB)) )
+names(MSBs) <- row.names(MSBB)     
+Mays <- rep( "MAYO", length(row.names(Mayo)) )
+names(Mays) <- row.names(Mayo)
+Gs = rep("1000G", length(row.names(Ref1000G)) )
+names(Gs) <- row.names(Ref1000G)
+CMCs  = rep("CMC", length(row.names(CMC)) )
+names(CMCs) <- row.names(CMC)
+
+CEUs <- rep( 'CEU', length(row.names(CEU)) )
+names(CEUs) <- row.names(CEU)
+YRIs <- rep( 'YRI', length(row.names(YRI)) )
+names(YRIs) <- row.names(YRI)
+CHBs <- rep( 'CHB', length(row.names(CHB)) )
+names(CHBs) <- row.names(CHB)
+JPTs <- rep( 'JPT', length(row.names(JPT)) )
+names(JPTs) <- row.names(JPT)
+ 
+SampleCohort <- c( RMs, MSBs, Mays, CMCs, CEUs, YRIs, CHBs, JPTs)
+pcs$SampleCohort <- as.factor( SampleCohort[ row.names(pcs) ] )
+pcs$SampleCohort <- factor(pcs$SampleCohort, levels = c("MAYO", "MSBB", "ROSMAP", "CMC", "YRI", "CHB", "CEU", "JPT"))
+
+SampleType <- c( RMs, MSBs, Mays, Gs, CMCs )
+pcs$SampleType <- as.factor( SampleType[ row.names(pcs) ] )
+
+P <- ggplot(pcs, aes( PC1, PC2) ) + geom_point( aes(colour = SampleCohort, shape = SampleType), cex=.8, alpha = 4/10) 
+P <- P + xlab(paste0( "PC1 ", signif( PC1_Var_exp*100, 3), "%" )) 
+P <- P + ylab(paste0( "PC2 ", signif( PC2_Var_exp*100, 3), "%" )) 
+P <- P + ggtitle("Ancestry PCA Analysis") + theme(plot.title = element_text(hjust = 0.5))
+P
+
+##Plot independent cohorts
+p = list()
+p[[1]] = ggplot(pcs[pcs$SampleCohort %in% c( 'CEU', 'JPT', 'CHB', 'YRI', 'MSBB' ),], aes( PC1, PC2) ) + geom_point( aes(colour = SampleCohort, shape = SampleType), cex=.8, alpha = 4/10)
+p[[1]] = p[[1]] + xlab(paste0( "PC1 ", signif( PC1_Var_exp*100, 3), "%" )) 
+p[[1]] = p[[1]] + ylab(paste0( "PC2 ", signif( PC2_Var_exp*100, 3), "%" ))  
+p[[1]] = p[[1]] + ggtitle("MSBB Ancestry PCA Analysis") + theme(plot.title = element_text(hjust = 0.5))
+
+p[[2]] = ggplot(pcs[pcs$SampleCohort %in% c( 'CEU', 'JPT', 'CHB', 'YRI', 'MAYO' ),], aes( PC1, PC2) ) + geom_point( aes(colour = SampleCohort, shape = SampleType), cex=.8, alpha = 4/10)
+p[[2]] = p[[2]] + xlab(paste0( "PC1 ", signif( PC1_Var_exp*100, 3), "%" )) 
+p[[2]] = p[[2]] + ylab(paste0( "PC2 ", signif( PC2_Var_exp*100, 3), "%" ))  
+p[[2]] = p[[2]] + ggtitle("Mayo Ancestry PCA Analysis") + theme(plot.title = element_text(hjust = 0.5))
+
+p[[3]] = ggplot(pcs[pcs$SampleCohort %in% c( 'CEU', 'JPT', 'CHB', 'YRI', 'ROSMAP' ),], aes( PC1, PC2) ) + geom_point( aes(colour = SampleCohort, shape = SampleType), cex=.8, alpha = 4/10)
+p[[3]] = p[[3]] + xlab(paste0( "PC1 ", signif( PC1_Var_exp*100, 3), "%" )) 
+p[[3]] = p[[3]] + ylab(paste0( "PC2 ", signif( PC2_Var_exp*100, 3), "%" ))  
+p[[3]] = p[[3]] + ggtitle("ROSMAP Ancestry PCA Analysis") + theme(plot.title = element_text(hjust = 0.5))
+#multiplot(plotlist = p, rows = 3)
+
+p[[4]] = ggplot(pcs[pcs$SampleCohort %in% c( 'CEU', 'JPT', 'CHB', 'YRI', 'CMC' ),], aes( PC1, PC2) ) + geom_point( aes(colour = SampleCohort, shape = SampleType), cex=.8, alpha = 4/10)
+p[[4]] = p[[4]] + xlab(paste0( "PC1 ", signif( PC1_Var_exp*100, 3), "%" )) 
+p[[4]] = p[[4]] + ylab(paste0( "PC2 ", signif( PC2_Var_exp*100, 3), "%" ))  
+p[[4]] = p[[4]] + ggtitle("CMC Ancestry PCA Analysis") + theme(plot.title = element_text(hjust = 0.5))
+#multiplot(plotlist = p, rows = 3)
+
+p[[1]]
+p[[2]]
+p[[3]]
+p[[4]]
+
+##Clustering All Samples 
+gnt <- as.matrix( fread("PEDS.txt", header = F, sep =" ") )
+id <- read.table("Names.txt", header = F, sep =" ")
+gnt[gnt <  0 | gnt > 2] = NA
+#293,239 SNPS
+
+ids <- paste0( id[,1], "_", id[,2] )
+row.names(gnt) <- ids
+#pcs_Clust = read.table( file="GemClustAllGenos.txt", sep=" ", header=F)
+
+#Only Consider Comps that explain > 1% of Variance
+Upper <- as.numeric(table(Comps[,1]/sum(Comps[,1])>0.02)["TRUE"])
+EC_foo.cluster = clusterGem(gnt = gnt, id = ids, min.dim = 3, max.dim = Upper)
+
+# EC_foo.cluster = clusterGem(gnt = gnt, id = ids, min.dim = 3, max.dim = 3)
+Refs <- pcs[ pcs$SampleType == '1000G', ]
+Refs$SampleCohort <- paste0( '1000G', '_', Refs$SampleCohort)
+CEU_Clusters <- c(names( table(EC_foo.cluster$clusters[ names(EC_foo.cluster$clusters) %in% names(CEUs) == T ]) ))
+CEU_Clusters <- c(names( table(EC_foo.cluster$clusters[ names(EC_foo.cluster$clusters) %in% row.names(CEU) == T ]) ))
+
+pcs <- cbind( pcs, Cluster = EC_foo.cluster$clusters)
+
+pcs$Ancestry <- "NonCEU"
+pcs[ (pcs$Cluster %in% CEU_Clusters) == T,]$Ancestry <- "CEU"
+pcs[ row.names(Refs), ]$Ancestry <- Refs$SampleCohort
+
+P <- ggplot(pcs, aes( PC1, PC2) ) + geom_point( aes(colour = Cluster, shape = SampleType), cex=.8, alpha = 4/10) 
+P <- P + xlab(paste0( "PC1 ", signif( PC1_Var_exp*100, 3), "%" )) 
+P <- P + ylab(paste0( "PC2 ", signif( PC2_Var_exp*100, 3), "%" ))  
+P <- P + ggtitle("Ancestry Clustering Analysis") + theme(plot.title = element_text(hjust = 0.5))
+P
+
+#mydf$task <- factor(mydf$task, levels = c("up", "down", "left", "right", "front", "back"))
+P <- ggplot(pcs, aes( PC1, PC2) ) + geom_point( aes(colour = Ancestry, shape = SampleType), cex=.8, alpha = 4/10) 
+P <- P + xlab(paste0( "PC1 ", signif( PC1_Var_exp*100, 3), "%" )) 
+P <- P + ylab(paste0( "PC2 ", signif( PC2_Var_exp*100, 3), "%" ))  
+P <- P + ggtitle("Ancestry Cluster Analysis CEU vs NonCEU") + theme(plot.title = element_text(hjust = 0.5))
+P
+
+CEUs <- pcs[ ( pcs$Ancestry %in% c('CEU', "1000G_CEU", "1000G_CHB", "1000G_YRI", "1000G_JPT") ) == T, ]
+P <- ggplot(CEUs, aes( PC1, PC2) ) + geom_point( aes(colour = Ancestry, shape = SampleType), cex=.8, alpha = 4/10)
+P <- P + xlab(paste0( "PC1 ", signif( PC1_Var_exp*100, 3), "%" )) 
+P <- P + ylab(paste0( "PC2 ", signif( PC2_Var_exp*100, 3), "%" ))  
+P <- P + ggtitle("Ancestry Cluster Analysis CEU") + theme(plot.title = element_text(hjust = 0.5))
+P
+
+CEUs <- pcs[ ( pcs$Ancestry %in% c('CEU', "1000G_CEU") ) == T, ]
+P <- ggplot(CEUs, aes( PC1, PC2) ) + geom_point( aes(colour = Ancestry, shape = SampleType), cex=.8, alpha = 4/10)
+P <- P + xlab(paste0( "PC1 ", signif( PC1_Var_exp*100, 3), "%" )) 
+P <- P + ylab(paste0( "PC2 ", signif( PC2_Var_exp*100, 3), "%" ))  
+P <- P + ggtitle("Ancestry Analysis: CEU Clustered Samples") + theme(plot.title = element_text(hjust = 0.5))
+P
+#Write INDV to Keep to a File:
+write.table( file = "CEU_AncestryClustered_INDVs.tsv", CEUs[ CEUs$Ancestry == 'CEU', c(1,2) ], col.names = F, row.names = F, quote = F, sep = "\t")
+```
+
+## Filter Genotypes for CEU Ancestry 
+```{bash FIlterAncestry, cache=FALSE, echo=TRUE, results='hide'}
+#source /root/.bashrc
+PATH=$PATH:~/TWAS/bin/
+CORES=`expr $(nproc) - 2`
+
+plink --threads $CORES --bfile Merged_GenoTypes --keep CEU_AncestryClustered_INDVs.tsv --make-bed --out CEU_AncestryMatched_Genotypes
+```
+
+```{r synapse.parameters, include=FALSE, echo=FALSE, results='hide', cache=TRUE}
+library(githubr)
+parentId = 'syn18936948';
+activityName = 'Ancestry Analysis';
+activityDescription = 'Processing and Analysis of WGS and Genotype data along with ancestry analysis with 1000 genome\'s CEU, CHB, YRI, and JPT populations';
+thisFileName <- 'Ancestry_PCA_Add_CMC.Rmd'
+# Github link
+thisRepo <- githubr::getRepo(repository = "jgockley62/TWAS", ref="branch", refName='master')
+thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thisFileName))
+```
+
+```{r Store, cache = FALSE, echo=FALSE, results='hide', eval=FALSE}
+parentId = 'syn18936948';
+activityName = 'Ancestry Analysis with CMC';
+activityDescription = 'Processing and Analysis of WGS and Genotype data from MAYO, CMC, MSBB, and ROSMAP along with ancestry analysis with 1000 genome\'s CEU, CHB, YRI, and JPT populations';
+
+CODE <- syn_temp$store(synapseclient$Folder(name = "Ancestry_Analysis_with_CMC", parentId = parentId))
+
+#Set Used SynIDs For Provenance
+Syns_Used <- c("syn11707204", "syn8650955", "syn5879161", "syn5879456", "syn5879461", 
+               "syn5879463", "syn5879470", "syn5879472", "syn5879473", "syn5879559", 
+               "syn5879628", "syn5879677", "syn5879748", "syn5879792","syn5879812", 
+               "syn5879827", "syn5879828", "syn5879830", "syn5879832", "syn5879834", 
+               "syn5879835", "syn5879836", "syn5879837", "syn5879838", "syn20809809",
+               "syn20835005", "syn20835007", "syn20834996")
+
+# Set annotations
+all.annotations = list(
+  dataType = 'GWAS',
+  dataSubType = 'DNAVars',
+  summaryLevel = 'SNP',
+  assay	 = c('Genotype Array', "WGS"),
+  tissueTypeAbrv	= c('TCX', 'ACC', 'PCC', "FP", 'IFG', 'PHG', 'STG', 'DLPFC', 'CBE'), 
+  study = c('MAYO', 'ROSMAP', 'MSBB'), 
+  organism = 'HomoSapiens',
+  consortium	= 'AMPAD',
+  normalizationStatus	= TRUE,
+  normalizationType	= '',
+  rnaquantification = '',
+  genomeAssemblyID = 'GRCh38'
+)
+
+#STORE
+#CEU Indvs
+#write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CEU_AncestryClustered_INDVs.tsv', sep = '\t', quote=F)
+
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='CEU_AncestryClustered_INDVs.tsv', name = 'Samples Clustered to CEU Ancestry', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$dataSubType = 'CEU_INDV'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
+#PCA EginVecs
+#write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'Total_PCA.eigenvec', sep = '\t', quote=F)
+
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='Total_PCA.eigenvec', name = 'PCA Eigen Vectors', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$dataSubType = 'EigenVecs'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
+#PCA EginVecs
+#write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'Total_PCA.eigenval', sep = '\t', quote=F)
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='Total_PCA.eigenval', name = 'PCA Eigen Values', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$dataSubType = 'EigenValues'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
+###Store Genos Seperatly 
+CODE <- syn_temp$store(synapseclient$Folder(name = "Ancestry_Clustered_Genotypes_with_CMC", parentId = parentId))
+
+#Geno Bed
+#write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CEU_AncestryMatched_Genotypes.bed', sep = '\t', quote=F)
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='CEU_AncestryMatched_Genotypes.bed', name = 'Genotype Bed File', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$dataSubType = 'GWAS'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
+
+#Geno Bim
+#write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CEU_AncestryMatched_Genotypes.bim', sep = '\t', quote=F)
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='CEU_AncestryMatched_Genotypes.bim', name = 'Genotype Bim File', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$dataSubType = 'GWAS'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
+#Geno Fam
+#write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CEU_AncestryMatched_Genotypes.fam', sep = '\t', quote=F)
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='CEU_AncestryMatched_Genotypes.fam', name = 'Genotype Fam File', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$dataSubType = 'GWAS'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
+#Geno nosex
+#write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CEU_AncestryMatched_Genotypes.nosex', sep = '\t', quote=F)
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='CEU_AncestryMatched_Genotypes.nosex', name = 'Genotype nosex File', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$dataSubType = 'GWAS'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
+
+#Geno log
+#write.table(RESIDUAL.SVA.GENE_EXPRESSION, file = 'CEU_AncestryMatched_Genotypes.log', sep = '\t', quote=F)
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='CEU_AncestryMatched_Genotypes.log', name = 'Genotype log File', parentId=CODE$properties$id ), used = Syns_Used, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  all.annotations$dataSubType = 'GWAS'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
+```
+
+```{bash Clean, echo=F, results='hide'}
+#rm -r ~/TWAS/bin/
+rm -r 1000G_RefSamps/
+rm *.bed
+rm *.fam
+rm *.bim
+rm *.log
+rm *.nosex
+rm *.tsv
+rm *list
+rm *.txt
+rm *.panel
+rm *.irem
+rm *.eigen*
+rm *.prune.*
+rm *.missnp
+rm *.out
+rm AllSnps4GemClust.*
+```
+
+### R Source Code
+[Github](`r thisFile`)
+
+##Knit to Synapse
+```{r knitmd, eval=FALSE, cache=FALSE, include=FALSE}
+synapseclient <- reticulate::import("synapseclient")
+syn_temp <- synapseclient$Synapse()
+syn_temp$login()
+
+library(data.table)
+library(githubr)
+library(ggplot2)
+library(plotrix)
+library(scater)
+library(data.table)
+
+setwd("~/TWAS/code/")
+source("~/TWAS/utilityFunctions/knitfile2synapseClient.R")
+source("~/TWAS/utilityFunctions/hook_synapseMdSyntax_plot.R")
+
+createAndKnitToFolderEntityClient(file = "Ancestry_PCA_Add_CMC.Rmd",
+                                          parentId ="syn18936948",
+                                          folderName = 'Ancestry_Analysis_with_CMC')
+```
