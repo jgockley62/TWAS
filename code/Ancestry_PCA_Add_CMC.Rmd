@@ -572,7 +572,7 @@ rm CMC_Filt_Genos/Init_Filtered_chr*.ped
 
 
 ### ReName the CMC SNPS so the can be combined
-```{python ReNamer_ONE, echo=F, results='hide',python.reticulate=T}
+```{python ReNamer_two, echo=F, results='hide',python.reticulate=T}
 import sys
 import os
 import re
