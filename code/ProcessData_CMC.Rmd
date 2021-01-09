@@ -769,7 +769,7 @@ write.table(FAM, file='All_CEU_ToTrainForTWAS.fam', row.names = F, col.names=F, 
 
 ```
 
-## Push Results to Synapse -- Contained in ProcessData.Rmd if needed for reference
+## Push Results to Synapse -- Contained in ProcessData_CMC.Rmd if needed for reference
 ```{r synapse.parameters.head, include=FALSE, results='hide', echo=FALSE, cache=TRUE}
 parentId = 'syn18936948';
 activityName = 'CMC Additional ROSMAP Processed TWAS Training Data';
@@ -956,7 +956,7 @@ setwd("~/TWAS/code/")
 source("~/TWAS/utilityFunctions/knitfile2synapseClient.R")
 source("~/TWAS/utilityFunctions/hook_synapseMdSyntax_plot.R")
 
-createAndKnitToFolderEntityClient(file = "ProcessData.Rmd",
+createAndKnitToFolderEntityClient(file = "ProcessData_CMC.Rmd",
                                           parentId ="syn18936948",
                                           folderName = 'Processed_TWAS_Training_Data_with_CMC')
 ```
