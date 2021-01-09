@@ -760,7 +760,6 @@ FAM <- as.data.frame(fread('CEU_AncestryMatched_Genotypes.fam'))
 FAM[ grepl( 'PENN',FAM[,2] ) | grepl( 'PITT',FAM[,2] ) | grepl( 'MSSM',FAM[,2] ), 5 ] <- SEX[ METADATA[ FAM[,2][ grepl( 'PENN',FAM[,2] ) | grepl( 'PITT',FAM[,2] ) | grepl( 'MSSM',FAM[,2] ) ] , 'Sex'] ]
 write.table(FAM, file='CEU_AncestryMatched_Genotypes.fam', row.names = F, col.names=F, quote=F, sep=" ")
 
-
 ###CEU Genos to train
 FAM <- as.data.frame(fread('All_CEU_ToTrainForTWAS.fam'))
 
