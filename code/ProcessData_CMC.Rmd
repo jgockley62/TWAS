@@ -1,0 +1,962 @@
+---
+title: "Process RNA-Seq and Genotype Data for TWAS"
+author: "JKG"
+date: "9/25/2019"
+output: pdf_document
+  chunk_output_type: console
+---
+
+```{r libs, include=FALSE}
+knitr::opts_chunk$set(
+  echo=FALSE,
+  warning=FALSE,
+  message=FALSE,
+  error = FALSE,
+  tidy = FALSE,
+  cache = TRUE,
+  results='hide')
+#library(reticulate)
+```
+##Before running 
+Run the following in docker exec -it <CONTAINER> /bin/bash 
+chmod 777 /root/
+mv TWAS/ /home/<USR>/TWAS/
+chown -hR <GID>:<USR> /home/<USR>/TWAS/
+Create a ~/.synapseConfig file in the container, but do not push a container containing your credentials file to Docker Hub!!!
+
+## Login to Synapse Will need to replace with your credentials
+```{bash Login, echo=T, results='hide', eval=FALSE}
+#source /root/.bashrc
+synapse login -u <USR> -p <PSWD> --rememberMe
+
+#Alternativly you can setup a credentials file as such:
+touch ~/.synapseConfig
+echo "[authentication]" >> ~/.synapseConfig
+echo "username = <USR>" >> ~/.synapseConfig
+echo "password = <PASWD>" >> ~/.synapseConfig
+```
+
+```{bash PLINKSetup, results='hide', eval=FALSE, echo=TRUE}
+mkdir ~/TWAS/bin
+wget -q -P ~/TWAS/bin http://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20190617.zip 
+unzip -d ~/TWAS/bin/ ~/TWAS/bin/plink_linux_x86_64_20190617.zip
+wget -q -P ~/TWAS/bin http://s3.amazonaws.com/plink2-assets/plink2_linux_x86_64_20191015.zip
+unzip -d ~/TWAS/bin/ ~/TWAS/bin/plink2_linux_x86_64_20191015.zip
+
+rm ~/TWAS/bin/*.zip
+rm ~/TWAS/bin/toy.*
+rm ~/TWAS/bin/LICENSE
+```
+
+## MSBB RNA-Seq: Label Brain Regions, Filter for INDV. w/Genotype Data, Rename Samples with Genotype ID 
+```{r MSBBRNA, results='hide', echo=TRUE, cache = FALSE}
+library(data.table)
+
+Process_MSBB <- function( dna, exp, id){
+  #'@dna synID of Geno samples eg 'syn11384608'
+  #'@exp synID of expression data eg 'syn8485026'
+  #'@id synID of RNA id translators  eg. 'syn6100548'
+
+  DNA <- fread(syn_temp$get(dna)$path)
+  Expression <- read.table(syn_temp$get(exp)$path, header=T, row.names = 1)
+  IDs <- fread(syn_temp$get(id)$path)
+  sink <- Expression
+  
+  #Make sample IDs the row names
+  IDs <- IDs[ IDs$Action != 'Exclude', ]
+  ###Convert to Z-Value by Tissue
+  Regions <- names( table(IDs$BrodmannArea) ) 
+  for( BM in Regions ){
+    temp <- Expression[ ,colnames(Expression)[ colnames(Expression) %in% IDs[ IDs$BrodmannArea == BM, ]$sampleIdentifier] ]
+    foo <- apply(temp, 1, scale)
+    foo <- t(foo)
+    colnames(foo) <- colnames(temp)
+    Expression[ , colnames(foo)] <- foo [, colnames(foo)]
+  }
+  
+  IDs <- IDs[ (IDs$sampleIdentifier %in% colnames(Expression)) == T, ]
+  Expression <- Expression[ , colnames(Expression)[(colnames(Expression) %in% IDs$sampleIdentifier) == T] ]
+  INDVs <- IDs[ IDs$fileType=='fastq' , ]
+
+  DNA <- as.data.frame(DNA)
+  DNA[ is.na(DNA$individualIdentifier)==T,]$individualIdentifier <- DNA[ is.na(DNA$individualIdentifier)==T,]$individualIdentifier.inferred
+  DNA <- DNA[ complete.cases(DNA$individualIdentifier), ]
+  DNA <- DNA[ DNA$Action != "Exclude", ]
+  row.names(DNA) <- DNA$individualIdentifier
+  
+  INDVs <- IDs[ !duplicated(IDs$sampleIdentifier) ]
+  INDVs <- INDVs[ (INDVs$individualIdentifier %in% DNA$individualIdentifier) == T, ]
+  
+  DNA <- as.data.frame(DNA)
+  DNA <- DNA[ complete.cases(DNA$individualIdentifier), ]
+  row.names(DNA) <- DNA$individualIdentifier
+  
+  INDVs <- as.data.frame(INDVs)
+  INDVs$GenoID <- DNA[ INDVs$individualIdentifier, ]$sampleIdentifier
+  INDVs$NewID <- paste0( INDVs$BrodmannArea, '_' , INDVs$GenoID )
+  row.names(INDVs) <- INDVs$sampleIdentifier
+  INDVs[ colnames(Expression), ]$NewID 
+
+  Expression <- Expression[ , colnames(Expression)[(colnames(Expression) %in% INDVs$sampleIdentifier) == T] ]
+  INDVs <- as.data.frame(INDVs)
+  row.names(INDVs) <- INDVs$sampleIdentifier
+  colnames(Expression) <- INDVs[ colnames(Expression), ]$NewID
+  
+  return( Expression )
+}
+
+Norm_Resid_MSBB <- Process_MSBB('syn11384608', 'syn8485026', 'syn6100548')
+dCorrect_Resid_MSBB <- Process_MSBB('syn11384608', 'syn20801798', 'syn6100548')
+```
+
+## Mayo RNA-Seq: Remove Cerebellum, Filter for INDV. w/Genotype Data, Rename Samples with Genotype ID 
+```{r MayoRNA, results='hide', echo=TRUE, cache = FALSE}
+#Get Geno Names From FAM File  #-old:syn20820122
+FAM <- as.data.frame(fread( syn_temp$get('syn23674977')$path))
+FAM <- FAM[ (grepl('ROS', FAM[,1])) == F , ]
+FAM <- FAM[ (grepl('MAP', FAM[,1])) == F , ]
+FAM <- FAM[ (grepl('ROS', FAM[,2])) == F , ]
+FAM <- FAM[ (grepl('MAP', FAM[,2])) == F , ]
+FAM <- FAM[ FAM[,1] == 0, ]
+
+#Filter Expression Samples by Presence of a Genotype
+Mayo_filt <- function( syn, fam, Type ){
+  #'@syn A synID for the RNA Seq eg. 'syn20801999' or 'syn20801991'
+  #'@fam A fam file eg. FAM
+  #'@Type fread = 0 read.table=1
+  
+  #syn <- 'syn20801991'
+  #fam <- FAM
+  #Type <- 1
+  
+  fam <- FAM
+  if( Type == 0){
+    RNA <- read.table( syn_temp$get(syn)$path)
+    colnames(RNA) <- gsub('_TCX', '_a', colnames(RNA))
+    colnames(RNA) <- gsub('X', '', colnames(RNA))
+    colnames(RNA) <- gsub('_a', '_TCX', colnames(RNA))
+    RNA <- cbind( 'ensembl_gene_id' = row.names(RNA), RNA[,colnames(RNA)] )
+    RNA <- RNA[ , colnames(RNA)[(grepl('_TCX', colnames(RNA))==T)] ]
+  }else{
+    RNA <- as.data.frame( fread( syn_temp$get(syn)$path ) )
+    row.names(RNA) <- RNA$ensembl_gene_id
+    RNA <- RNA[ , colnames(RNA)[(grepl('_TCX', colnames(RNA))==T)] ]
+  }
+  colnames( RNA ) <- gsub( '_TCX', '', colnames( RNA ) )
+  colnames( RNA ) <- paste0( '0_', colnames( RNA ) )
+  
+  ## Z-Scale
+  foo <- as.matrix(RNA)
+  foo <- apply(RNA, 1, scale)
+  foo <- t(foo)
+  colnames(foo) <- colnames(RNA)
+  #Expression[ , colnames(foo)] <- foo [, colnames(foo)]
+    
+  RNA <- foo[ , colnames(foo)[ (colnames(foo) %in% paste0( FAM[,1], "_", FAM[,2] )) == T ] ]
+  return(RNA)
+}
+Norm_Resid_MAYO <- Mayo_filt( 'syn8466825', FAM, 1 )
+dCorrect_Resid_MAYO <- Mayo_filt( 'syn20801991', FAM, 0 )
+```
+
+## ROSMAP RNA-Seq: Filter for INDV. w/Genotype Data and Rename Samples with Genotype ID 
+```{r ROSMAPoRNA, results='hide', echo=TRUE, cache = FALSE}
+#SVA: 'syn8456704'
+#SVA+Diag: 'syn20800652'
+Ros_Filt <- function(Exp, name, Trans, Fam, Var){
+  #'@Exp the expression matrix eg. 'syn23666495'
+  #'@name another name file eg. 'syn5879839'
+  #'@Trans 'syn3382527'
+  #'@Fam a .fam file of the ROS samps syn23674977
+  #'@Var 1=Nondiagnosis correcte 0=Diagnosis Corrected
+  # eg. Ros_Filt( 'syn23666495', 'syn5879839', 'syn3382527','syn23674977')
+  
+  FAM <- as.data.frame(fread( syn_temp$get(Fam)$path))
+  Fam <- FAM[ (grepl('ROS', FAM[,1])) == T | (grepl('MAP', FAM[,1])) == T | (grepl('ROS', FAM[,2])) == T | (grepl('MAP', FAM[,2])) == T, ]
+  InvFam <- FAM[ (grepl('ROS', FAM[,1])) == F & (grepl('MAP', FAM[,1])) == F & (grepl('ROS', FAM[,2])) == F & (grepl('MAP', FAM[,2])) == F, ]
+  Fam[,1] <- Fam[,2]
+  
+  #Need to assign sex to MSBB and Mayo
+  NAMED_FAM <- rbind( InvFam[1:dim(InvFam)[1], ],  Fam[1:dim(Fam)[1], ] )
+  
+  if(Var == 1){
+    #Exp <- as.data.frame( fread(syn_temp$get(Exp)$path, row.names=1) )
+     Exp <- as.data.frame( read.table(syn_temp$get(Exp)$path) )
+     colnames(Exp) <- gsub('X','', colnames(Exp))
+     Exp <- cbind(row.names(Exp), Exp[1:dim(Exp)[2]])
+     colnames(Exp)[1] <- 'ensembl_gene_id'
+  }else{
+    if(Var == 0){
+        #Exp <- as.data.frame( read.table(syn_temp$get('syn20800652')$path) )
+        Exp <- as.data.frame( read.table(syn_temp$get(Exp)$path) )
+        colnames(Exp) <- gsub('X','', colnames(Exp))
+        Exp <- cbind(row.names(Exp), Exp[1:dim(Exp)[2]])
+        colnames(Exp)[1] <- 'ensembl_gene_id'
+    }else{}
+  }
+  Trans <- fread(syn_temp$get(Trans)$path)
+  Trans <- Trans[ Trans$gwas_id != "", ]
+  names <- as.data.frame(fread(syn_temp$get(name)$path))
+  Trans <- Trans[ (Trans$gwas_id  %in%  names[,2]) == T, ]
+  #Trans <- Trans[ (Trans$rnaseq_id == "") == F, ]
+  #Trans <- Trans[ !duplicated(Trans$rnaseq_id), ]
+  
+  ## Z-Scale - *By Tissue*
+  Covariates <- read.table( syn_temp$get('syn23666496')$path, header=T, sep='\t' )
+  #row.names(Covariates) <- do.call( rbind, strsplit( as.character(Covariates$SampleID),  "[.]" ))[,1]
+  row.names(Covariates) <- as.character( Covariates$SampleID )
+  colnames(Exp) <- gsub( '[.]', '-', colnames(Exp) )
+  row.names( Exp ) <- Exp$ensembl_gene_id
+  Exp <- Exp[ , (colnames( Exp ) %in% "ensembl_gene_id") == F ]
+  
+  Covariates$tissue <- as.character(Covariates$tissue)
+  
+  for( tis in c( 'DLPFC', 'ACC', 'PCC' )){
+    foo <- as.matrix(Exp[ ,as.character(Covariates[ Covariates$tissue == tis, ]$SampleID) ])
+    foo <- apply(as.matrix(Exp[ ,as.character(Covariates[ Covariates$tissue == tis, ]$SampleID) ]), 1, scale)
+    foo <- t(foo)
+    colnames(foo) <- colnames(as.matrix(Exp[ ,as.character(Covariates[ Covariates$tissue == tis, ]$SampleID) ]))
+    eval( parse( text = paste0( 'foo_', tis, ' <- foo' ) ))
+  }
+  
+  foo <- cbind( foo_DLPFC, foo_ACC, foo_PCC )
+  row.names( foo ) <- row.names( Exp )
+  foo <- foo[ , as.character(row.names(Covariates)) ]
+  
+  #Filter for matched RNA-Seq and GWAS samples
+  Mast_RNA_Meta <- read.csv( syn_temp$get('syn23573928')$path )
+  Mast_RNA_Meta <- Mast_RNA_Meta[ Mast_RNA_Meta$specimenID %in% colnames(foo), ]
+  
+  Mast_RNA_Meta <- Mast_RNA_Meta[ Mast_RNA_Meta$projid %in% Trans$projid, ]
+  row.names(Mast_RNA_Meta) <- as.character(Mast_RNA_Meta$specimenID)
+  Exp <- foo[ , colnames(foo)[ (colnames(foo) %in% as.character(Mast_RNA_Meta$specimenID)) == T] ]
+  
+  #Filter the translator with GWAS IDs to relevant unique entries of Project IDs
+  Trans <- as.data.frame( Trans[ as.character(Trans$projid ) %in% as.character(Mast_RNA_Meta$projid), ] )
+  Trans$Unis <- paste0( Trans$projid, '_', Trans$gwas_id )
+  Trans <- Trans[ !duplicated(Trans$Unis), ]
+  row.names(Trans) <- Trans$projid
+  
+  #Replace expression names...
+  #Find Resequenced Samples and keep the sample with the highest RIN Value
+  DOO <- paste0(as.character( Trans[ as.character( Mast_RNA_Meta[ colnames(Exp), ]$projid_repaired ), ]$gwas_id),
+  '_',
+  as.character( Mast_RNA_Meta[ colnames(Exp), ]$tissue))
+  Mast_RNA_Meta$interesting <- paste0( as.character(Mast_RNA_Meta$individualid), "_",
+                                       as.character(Mast_RNA_Meta$projid_repaired), "_",
+                                       as.character(Mast_RNA_Meta$tissue))
+  IntDups <- Mast_RNA_Meta$interesting[duplicated(Mast_RNA_Meta$interesting)]
+  Mast_RNA_Meta$KEEPS <- 1
+  for( entry in IntDups){
+    temp <- Mast_RNA_Meta[ Mast_RNA_Meta$interesting == entry, c( 'specimenID','RIN') ]
+    Mast_RNA_Meta[ as.character(temp[which.max(temp$RIN),]$specimenID),]$KEEPS <- 0
+  }
+  Mast_RNA_Meta <- Mast_RNA_Meta[ Mast_RNA_Meta$KEEPS == 1, ]
+  Exp <- Exp[ , (colnames(Exp) %in% row.names(Mast_RNA_Meta)) == T ]
+  
+  colnames(Exp) <- paste0(as.character( Trans[ as.character( Mast_RNA_Meta[ colnames(Exp), ]$projid_repaired ), ]$gwas_id),
+  '_',
+  as.character( Mast_RNA_Meta[ colnames(Exp), ]$tissue))
+  
+  return(Exp)
+}
+
+# , , syn23674977
+Norm_Resid_RM <-Ros_Filt( 'syn23643705', 'syn5879839', 'syn3382527','syn20820122', 1)
+dNorm_Resid_RM <-Ros_Filt( 'syn23666495', 'syn5879839', 'syn3382527','syn20820122', 0)
+```
+
+
+## Process CMC Data
+```{r CMC, results='hide', echo=TRUE, cache=TRUE}
+#Exp
+Exp_PFC <- as.data.frame( read.table( syn_temp$get('syn21470926')$path, header = T, sep = '\t', row.names = 1 ))
+rownames(Exp_PFC) <- do.call( rbind, strsplit(row.names(Exp_PFC),'\\.'))[,1]
+Exp_ACC <- as.data.frame( read.table( syn_temp$get('syn21483472')$path, header = T, sep = '\t', row.names = 1 ))
+rownames(Exp_ACC) <- do.call( rbind, strsplit(row.names(Exp_ACC),'\\.'))[,1]
+
+keep <- row.names(Exp_ACC)[ row.names(Exp_ACC) %in% row.names(Exp_PFC) ]
+Exp <- cbind( Exp_ACC[keep,], Exp_PFC[keep,] )
+
+#ID--
+ID <- read.csv( syn_temp$get('syn21444814')$path, header = T )
+colnames(Exp) <- gsub( 'RNA_','',colnames(Exp) )
+
+Adjuster <- function( input ){
+  #'@input a column name from the CMC expression dataframe
+    NameString <- do.call( c, strsplit( input, '_' ) )
+    if( length(NameString) == 3 ){
+      #Rearange traditional name
+      result <- paste0( NameString[1], '_',
+                        NameString[3], '_',
+                        NameString[2]
+                        )
+    }else{
+      if( length(NameString) == 4 ){
+      #Rearrange the BPs
+        if( NameString[3] == 'BP' ){
+          result <- paste0( NameString[1], '_',
+                        NameString[3], '_',
+                        NameString[4], '_',
+                        NameString[2]
+                        )
+        }else{
+          if( NameString[2] == 'BP' ){
+            result <- paste0( NameString[1], '_',
+                        NameString[2], '_',
+                        NameString[4], '_',
+                        NameString[3]
+                        )
+          }else{
+            warning(paste0( input,' Breaks BP Name Convention'))
+          }
+        }
+      }else{
+        warning(paste0( input,' Breaks Name Convention'))
+      }
+    }
+}
+
+CMC_RNA_Sample_Trans <-  cbind( OG_Name = names( sapply( colnames(Exp), Adjuster )), 
+                                ReNamed = sapply( colnames(Exp), Adjuster )
+)
+CMC_RNA_Sample_Trans <- as.data.frame(CMC_RNA_Sample_Trans, stringsAsFactors=F)
+
+CMC_RNA_Sample_Trans$GWAS_Match <- gsub( '_PFC', '', CMC_RNA_Sample_Trans$ReNamed  )
+CMC_RNA_Sample_Trans$GWAS_Match <- gsub( '_ACC', '', CMC_RNA_Sample_Trans$GWAS_Match  )
+
+colnames(Exp) <- CMC_RNA_Sample_Trans[ colnames(Exp), ]$ReNamed
+
+Exp_ACC <- Exp[, colnames(Exp)[grepl('_ACC',colnames(Exp))] ]
+Exp_PFC <- Exp[, colnames(Exp)[grepl('_PFC',colnames(Exp))] ]
+
+Scaled_PFC_Exp <- t(scale(t(Exp_PFC)))
+Scaled_ACC_Exp <- t(scale(t(Exp_ACC)))
+
+Scaled_Exp <- cbind(  Scaled_ACC_Exp,Scaled_PFC_Exp )
+
+```
+
+
+
+## Merge RNA-Seq: Merge and Annotate RNA-Seq
+* Remove genes on Chr X, Chr Y, Chr M 
+* Check for no Patch Contig Nonsense
+* Print Sample ID List
+* Filter Genotypes for RNA Samples
+```{r Merge RNASeq, results='hide', echo=TRUE, cache = FALSE}
+#Common Genes:
+GNames <- names( table(c( row.names(Scaled_Exp), row.names(Norm_Resid_MSBB), row.names(Norm_Resid_MAYO), row.names(Norm_Resid_RM)  ))[ table(c( row.names(Norm_Resid_MSBB), row.names(Scaled_Exp), row.names(Norm_Resid_MAYO), row.names(Norm_Resid_RM)  )) == 4] )
+dGNames <- names( table(c( row.names(dCorrect_Resid_MSBB), row.names(Scaled_Exp), row.names(dCorrect_Resid_MAYO), row.names(dNorm_Resid_RM)  ))[ table(c( row.names(dCorrect_Resid_MSBB), row.names(Scaled_Exp), row.names(dCorrect_Resid_MAYO), row.names(dNorm_Resid_RM)  )) == 4] )
+
+#row.names(Scaled_Exp)
+#Combine Into One DataFrame
+Comb <- function( MSBB, Mayo, RM, cmc, Names){
+  #'@MSBB The MSBB Expression Set Data Frame
+  #'@Mayo The Mayo Expression Set Data Frame
+  #'@RM The ROSMAP Expression Set Data Frame
+  #'@Names Gene names Vector
+  #MSBB <- dCorrect_Resid_MSBB
+  #Mayo <- dCorrect_Resid_MAYO
+  #RM <- dNorm_Resid_RM
+  #Names <- dGNames 
+  
+  #row.names(MSBB) <- as.character(MSBB$ensembl_gene_id)
+  #row.names(Mayo) <- as.character(Mayo$ensembl_gene_id)
+  #row.names(RM) <- as.character(RM$ensembl_gene_id)
+  
+  #MSBB <- MSBB[ GNames ,2:dim(MSBB)[2] ]
+  #Mayo <- Mayo[ GNames ,2:dim(Mayo)[2] ]
+  #RM <- RM[ GNames ,2:dim(RM)[2] ]
+
+  Out <- cbind( MSBB[Names,],#[ ,1:dim(MSBB)[2] ],
+                Mayo[Names, ],#[ ,1:dim(Mayo)[2] ],
+                cmc[Names, ],
+                RM[Names, ]#[, 1:dim(RM)[2] ]
+  )
+  
+  return( Out )
+}
+
+Norm_Resid <- Comb( Norm_Resid_MSBB, Norm_Resid_MAYO, Norm_Resid_RM, Scaled_Exp, GNames )
+Diag_Resid <- Comb( dCorrect_Resid_MSBB,  dCorrect_Resid_MAYO, dNorm_Resid_RM, Scaled_Exp, dGNames )
+
+#Annotate for TWAS
+hg19 <- as.data.frame(fread(syn_temp$get('syn20826610')$path))
+hg19 <- hg19[ hg19[,1] %in% row.names( Norm_Resid ), ]
+row.names(hg19) <- hg19[,1]
+
+#Filter out the 231 Genes that don't have coherent annotations between GRCH38 and GRCH 37
+Norm_Resid <- Norm_Resid[ (row.names(Norm_Resid) %in% row.names(hg19)) == T, ]
+Diag_Resid <- Diag_Resid[ (row.names(Diag_Resid) %in% row.names(hg19)) == T, ]
+
+#Finalize
+Norm_Resid <- as.data.frame( cbind( 
+               TargetID = row.names(Norm_Resid), 
+               Gene_Symbol = row.names(Norm_Resid),
+               Chr = hg19[row.names(Norm_Resid), ][,2] , 
+               Coord = hg19[ row.names(Norm_Resid), ][,3],
+               Norm_Resid[ ,1:dim(Norm_Resid)[2]
+             ]) )
+
+Diag_Resid <- as.data.frame(cbind( 
+               TargetID = row.names(Diag_Resid), 
+               Gene_Symbol = row.names(Diag_Resid),
+               Chr = hg19[row.names(Diag_Resid), ][,2] , 
+               Coord = hg19[ row.names(Diag_Resid), ][,3],
+               Diag_Resid[ ,1:dim(Diag_Resid)[2]
+             ]) )
+
+#Filter out the ~ ChrX, MT, and Patch genes
+Norm_Resid <- Norm_Resid[ (as.character(Norm_Resid$Chr) %in% c('MT', 'X', as.character(Norm_Resid$Chr)[ grepl('PATCH', as.character(Norm_Resid$Chr)) == T])) == F, ]
+Diag_Resid <- Diag_Resid[ (as.character(Diag_Resid$Chr) %in% c('MT', 'X', as.character(Diag_Resid$Chr)[ grepl('PATCH', as.character(Diag_Resid$Chr)) == T])) == F, ]
+
+#Order:
+Norm_Resid <- Norm_Resid[ with(Norm_Resid, order( Chr, Coord)), ]
+Diag_Resid <- Diag_Resid[ with(Diag_Resid, order( Chr, Coord)), ]
+
+#Filter for CEU Ancestry Matched Training Cohort
+Tot_Samps <- cbind( colnames(Norm_Resid)[5:length(colnames(Norm_Resid))], 
+                    colnames(Norm_Resid)[5:length(colnames(Norm_Resid))]
+                    #_#do.call( rbind, strsplit( colnames(Norm_Resid)[5:length(colnames(Norm_Resid))],  "_" ))[,2]
+                  )
+for( SUB in c('BM22_', 'BM10_', 'BM36_','BM44_', '_ACC', '_PFC', '_PCC', '_DLPFC' )){
+  Tot_Samps[,2] <- gsub( SUB, '', Tot_Samps[,2] )
+}
+Tot_Samps[,2][ grepl("^0_",Tot_Samps[,2])  ] <- gsub("^0_","",Tot_Samps[,2][ grepl("^0_",Tot_Samps[,2])] )
+write.table(Tot_Samps, file="ALL_RNASamplesComb.tsv", col.names =F, row.names=F, sep=" ", quote=F)
+
+#Output the ROSMAP INDV CEU Matched Training Cohort
+ROS <- colnames(Norm_Resid)[ grepl('ROS', colnames(Norm_Resid)) == T | grepl('MAP', colnames(Norm_Resid)) == T ]
+ROS_Norm_Resid <- Norm_Resid[ ,c("TargetID", "Gene_Symbol", "Chr", "Coord", ROS) ]
+ROS_Diag_Resid <- Diag_Resid[ ,c("TargetID", "Gene_Symbol", "Chr", "Coord", ROS) ]
+
+ROS_Samps <- cbind( colnames(ROS_Norm_Resid)[5:length(colnames(ROS_Norm_Resid))],
+                    do.call( rbind, strsplit( colnames(ROS_Norm_Resid)[5:length(colnames(ROS_Norm_Resid))],  "_" ))[,1]
+                  )
+write.table(ROS_Samps, file="ROS_RNASamples.tsv", col.names =F, row.names=F, sep=" ", quote=F)
+```
+
+## Fix FamFile
+```{r FamFix, results='hide', echo=TRUE, cache=TRUE}
+#Old- syn20820122
+#_#syn23674977
+
+FAM <- as.data.frame(fread( syn_temp$get('syn23674977')$path))
+MSBB <- as.data.frame(fread( syn_temp$get('syn11384608')$path))
+MSBB_Clin <- as.data.frame(fread( syn_temp$get('syn6101474', version=4)$path))
+ROSMAP <- as.data.frame(fread( syn_temp$get('syn3191087')$path))
+row.names(ROSMAP) <- ROSMAP$projid
+ROSMAP_ID <- as.data.frame(fread( syn_temp$get('syn3382527')$path))
+MAYO <- as.data.frame(fread( syn_temp$get('syn19164046')$path))
+mayo <- as.data.frame(fread( syn_temp$get('syn19164050')$path))
+
+#Fix CMC Names
+FAM[,1] <- gsub( '0_PITT_', 'PITT_', gsub( '0_Pitt_', 'Pitt_', gsub( '0_PENN_', 'PENN_', gsub( '0_MSSM_', 'MSSM_', FAM[,1] ))))
+FAM[,2] <- gsub( '0_PITT_', 'PITT_', gsub( '0_Pitt_', 'Pitt_', gsub( '0_PENN_', 'PENN_', gsub( '0_MSSM_', 'MSSM_', FAM[,2] ))))
+FAM[,1] <- gsub( 'Pitt_', 'PITT_', FAM[,1] )
+FAM[,2] <- gsub( 'Pitt_', 'PITT_', FAM[,2] )
+
+#MSBB 
+row.names(MSBB) <- MSBB$sampleIdentifier
+name <- FAM[ FAM$V2 %in% row.names(MSBB) == T, ]$V2
+MSBB <- MSBB[name,]
+
+row.names(MSBB_Clin) <- MSBB_Clin$individualIdentifier
+
+MSBB_Clin <- cbind(MSBB_Clin[MSBB$individualIdentifier,1:dim(MSBB_Clin)[2]], MSBB[,1:dim(MSBB)[2] ] )
+row.names(MSBB_Clin) <- MSBB_Clin$sampleIdentifier
+
+MSBB_Clin$Diagnosis <- -9
+for( i in 1:length(row.names(MSBB_Clin))){
+  if( is.na(MSBB_Clin[ i,]$CDR) ==  F & is.na(MSBB_Clin[ i,]$bbscore) ==  F & is.na(MSBB_Clin[ i,]$NP.1) ==  F ){
+    if( MSBB_Clin[ i,]$CDR >= 1 & MSBB_Clin[ i,]$bbscore > 3 & MSBB_Clin[ i,]$NP.1 > 1 ){
+      MSBB_Clin[ i,]$Diagnosis <- 2
+    }else{
+      if(MSBB_Clin[ i,]$CDR < 1 & MSBB_Clin[ i,]$bbscore < 4 & MSBB_Clin[ i,]$NP.1 < 2){
+        MSBB_Clin[ i,]$Diagnosis <- 1
+      }else{}
+    }
+  }
+}
+
+Sex<-c(1,2)
+names(Sex) <- c('M', 'F')
+MSBB$SEX.inferred <- Sex[MSBB$SEX.inferred]
+row.names(FAM)<-FAM$V2
+
+FAM[ row.names(MSBB), ]$V5 <- MSBB$SEX.inferred
+FAM[ row.names(MSBB_Clin), ]$V6 <- MSBB_Clin$Diagnosis
+
+#Mayo
+mayo <- mayo[complete.cases(mayo$Gender),]
+MAYO <- MAYO[complete.cases(MAYO$Sex),]
+
+NewMayo <- as.data.frame( rbind( cbind( MAYO$SampleID,MAYO$Sex,as.character(MAYO$Diagnosis)), cbind( mayo$SampleID,mayo$Gender, as.character(mayo$Diagnosis))) )
+NewMayo<- NewMayo[!duplicated(NewMayo),]
+NewMayo <- as.data.frame( cbind( as.character(NewMayo$V1),as.character(NewMayo$V2), gsub("_CER","",gsub("_TCX","",NewMayo$V1)), as.character(NewMayo$V3)) )
+NewMayo$V2 <- Sex[as.character( NewMayo$V2 )]
+
+names <- FAM[ FAM$V1 == 0 ,]$V2
+NewMayo <- NewMayo[ !duplicated(NewMayo$V3), ]
+row.names(NewMayo) <- NewMayo$V3
+NewMayo <- NewMayo[ names, ]
+
+Aff <- c(-9,-9,1,2)
+names(Aff) <- c("Pathologic Aging", "PSP", "Control", "AD")
+FAM[ names ,]$V6 <- as.numeric(Aff[as.character(NewMayo[ names, ]$V4)])
+FAM[ names ,]$V5 <- NewMayo[ names, ]$V2
+
+#Fix the Final
+FAM[ '1957',]$V5 <- 2
+FAM[ '1957',]$V6 <- -9
+FAM[ '1950',]$V5 <- 2
+FAM[ '1950',]$V6 <- -9
+
+#Fix ROSMAP Names
+FAM[ grepl('ROS', FAM$V2) == T  | grepl('MAP', FAM$V2) == T , ]$V1 <- FAM[ grepl('ROS', FAM$V2) == T  | grepl('MAP', FAM$V2) == T , ]$V2
+
+#_# Old - Look only combining the MSBB Samps 
+#FAM$V1 <- paste0( FAM$V1, "_", FAM$V2 )
+FAM[ FAM[,1] == 0, ][,1] <- paste0( FAM[ FAM[,1] == 0, ][,1], "_", FAM[ FAM[,1] == 0, ][,2] )
+
+#Write New FAM to file
+write.table(FAM, file='New_Fam.fam', row.names = F, col.names=F, quote=F, sep=" ")
+
+##  Assemble the IDV. to Expand -- MSBB
+#tail(FAM[ FAM$V1[ grepl('ROS', FAM$V1) == F ] $ FAM$V1[ grepl('MAP', FAM$V1) == F ] ,])
+# & FAM$V1[ grepl('ROS', FAM$V1) == F ]
+MSBB_List <- FAM[ (dim(NewMayo)[1]+1):dim(FAM)[1], ]
+MSBB_List <-  MSBB_List[ grepl('MSSM', MSBB_List$V1) == F ,]
+MSBB_List <-  MSBB_List[ grepl('PITT', MSBB_List$V1) == F ,]
+MSBB_List <-  MSBB_List[ grepl('Pitt', MSBB_List$V1) == F ,]
+MSBB_List <-  MSBB_List[ grepl('PENN', MSBB_List$V1) == F ,]
+MSBB_List <- MSBB_List[1:dim(MSBB)[1],]
+
+#MSBB_List <- MSBB_List[ MSBB_List$V1[ grepl('MAP', MSBB_List$V1) == F ] ,]
+#MSBB_List <- MSBB_List[ MSBB_List$V1[ grepl('ROS', MSBB_List$V1) == F ] ,]
+
+write.table( MSBB_List[,1:2], file="MSBB_SamplesToExpand.txt", quote = F, row.names = F, col.names = F, sep = "\t" )
+
+##  Assemble the IDV. to Expand -- CMC
+CMC_List <- FAM[ (dim(NewMayo)[1]+1):dim(FAM)[1], ]
+CMC_List <-  CMC_List[ grepl('MSSM', CMC_List$V1) | grepl('PITT', CMC_List$V1) |
+grepl('PENN', CMC_List$V1) , ]
+
+write.table( CMC_List[,1:2], file="CMC_SamplesToExpand.txt", quote = F, row.names = F, col.names = F, sep = "\t" )
+
+##  Assemble the IDV. to Expand -- ROSMAP
+RosMap_List <-  FAM[ grepl('MAP', FAM$V1) | grepl('ROS', FAM$V1), 1:3 ]
+
+write.table( RosMap_List , file="ROSMAP_SamplesToExpand.txt", quote = F, row.names = F, col.names = F, sep = "\t" )
+```
+
+## Filter Genotype data
+```{bash FilterGenos, results='hide', echo=TRUE, cache=TRUE}
+#source /root/.bashrc
+export PATH=$PATH:~/TWAS/bin/
+CORES=`expr $(nproc) - 2`
+
+#Pull Geno-data
+synapse get syn23674975 #syn20820120
+synapse get syn23674976 #syn20820121
+#Old - syn20820122 syn23674977
+synapse get syn23674977
+
+#Copy over FAM File with Sex Info:
+cp New_Fam.fam CEU_AncestryMatched_Genotypes.fam
+
+############################################################################################
+##--## expand the MSBB Samples by tissue
+#Extract the MSBB Samples to duplicate and rename to match tissues --silent
+plink --threads $CORES --bfile CEU_AncestryMatched_Genotypes --keep MSBB_SamplesToExpand.txt --silent --recode --out MSBB_Intermediate
+
+#ReName MSBB to get FID and IIDs
+awk '{for(i=0;i<4;i++)print}' MSBB_Intermediate.ped > temp
+
+gawk -v m=1 -v n=1 -v el='BM10' 'NR % m == 0 { $n = el"_"$2 } 1' temp > foo
+gawk -v m=2 -v n=1 -v el='BM22' 'NR % m == 0 { $n = el"_"$2 } 1' foo > temp
+gawk -v m=3 -v n=1 -v el='BM36' 'NR % m == 0 { $n = el"_"$2 } 1' temp > foo
+gawk -v m=4 -v n=1 -v el='BM44' 'NR % m == 0 { $n = el"_"$2 } 1' foo > temp
+mv temp MSBB_Intermediate.ped
+rm foo
+plink --threads $CORES --file MSBB_Intermediate --silent --make-bed --out MSBB_Expanded
+
+#ReName ALL to get FID and IIDs
+#_#plink --threads $CORES --bfile CEU_AncestryMatched_Genotypes --silent --recode --out temp
+#_#gawk -v m=1 -v n=1 'NR % m == 0 { if( $2 ~ /MAP/ || $2 ~ /ROS/ ) { $n = $2"_"$2 }else{ $n = $1 } } 1' temp.ped > foo
+#gawk -v m=1 -v n=1 'NR % m == 0 { $n = $1"_"$2 } 1' temp.ped > foo2
+
+#_#mv foo temp.ped
+#_#plink --threads $CORES --file temp --silent --make-bed --out CEU_AncestryMatched_Genotypes
+
+#Merge
+plink --threads $CORES --bfile CEU_AncestryMatched_Genotypes --bmerge MSBB_Expanded --silent --make-bed --out Rebuilt
+plink --threads $CORES --bfile Rebuilt --remove MSBB_SamplesToExpand.txt --silent --make-bed --out CEU_AncestryMatched_Genotypes
+
+#rm Rebuilt.*
+#rm MSBB_Expanded.*
+#rm temp.*
+############################################################################################
+##--## expand the CMC Samples by tissue
+#Extract the CMC Samples to duplicate and rename to match tissues --silent
+sed -i 's/Pitt/PITT/g' CEU_AncestryMatched_Genotypes.fam
+plink --threads $CORES --bfile CEU_AncestryMatched_Genotypes --keep CMC_SamplesToExpand.txt --make-bed --out CMC_IntermediateA
+plink --threads $CORES --bfile CEU_AncestryMatched_Genotypes --keep CMC_SamplesToExpand.txt --make-bed --out CMC_IntermediateB
+
+awk '{ print $1"_ACC\t"$2"\t"$3"\t"$4"\t"$5"\t"$6 }' CMC_IntermediateA.fam > foo
+mv foo CMC_IntermediateA.fam
+awk '{ print $1"_PFC\t"$2"\t"$3"\t"$4"\t"$5"\t"$6 }' CMC_IntermediateB.fam > foo
+mv foo CMC_IntermediateB.fam
+
+plink --bfile CMC_IntermediateA --bmerge CMC_IntermediateB.bed CMC_IntermediateB.bim CMC_IntermediateB.fam --make-bed --out CMC_Expanded
+rm CMC_IntermediateA.*
+rm CMC_IntermediateB.*
+
+#Merge
+plink --threads $CORES --bfile CEU_AncestryMatched_Genotypes --bmerge CMC_Expanded --silent --make-bed --out Rebuilt
+plink --threads $CORES --bfile Rebuilt --remove CMC_SamplesToExpand.txt --silent --make-bed --out CEU_AncestryMatched_Genotypes
+####################################################################################################
+##--## expand the ROSMAP Samples by tissue
+#Extract the ROSMAP Samples to duplicate and rename to match tissues --silent
+plink --threads $CORES --bfile CEU_AncestryMatched_Genotypes --keep ROSMAP_SamplesToExpand.txt --make-bed --out ROSMAP_IntermediateA
+plink --threads $CORES --bfile CEU_AncestryMatched_Genotypes --keep ROSMAP_SamplesToExpand.txt --make-bed --out ROSMAP_IntermediateB
+plink --threads $CORES --bfile CEU_AncestryMatched_Genotypes --keep ROSMAP_SamplesToExpand.txt --make-bed --out ROSMAP_IntermediateC
+
+awk '{ print $1"_ACC\t"$2"\t"$3"\t"$4"\t"$5"\t"$6 }' ROSMAP_IntermediateA.fam > foo
+mv foo ROSMAP_IntermediateA.fam
+awk '{ print $1"_DLPFC\t"$2"\t"$3"\t"$4"\t"$5"\t"$6 }' ROSMAP_IntermediateB.fam > foo
+mv foo ROSMAP_IntermediateB.fam
+awk '{ print $1"_PCC\t"$2"\t"$3"\t"$4"\t"$5"\t"$6 }' ROSMAP_IntermediateC.fam > foo
+mv foo ROSMAP_IntermediateC.fam
+
+plink --bfile ROSMAP_IntermediateA --bmerge ROSMAP_IntermediateB.bed ROSMAP_IntermediateB.bim ROSMAP_IntermediateB.fam --make-bed --out ROSMAP_ExpandedA
+plink --bfile ROSMAP_ExpandedA --bmerge ROSMAP_IntermediateC.bed ROSMAP_IntermediateC.bim ROSMAP_IntermediateC.fam --make-bed --out ROSMAP_Expanded
+rm ROSMAP_IntermediateA.*
+rm ROSMAP_IntermediateB.*
+rm ROSMAP_IntermediateC.*
+rm ROSMAP_ExpandedA.*
+
+#Merge
+plink --threads $CORES --bfile CEU_AncestryMatched_Genotypes --bmerge ROSMAP_Expanded --silent --make-bed --out Rebuilt
+plink --threads $CORES --bfile Rebuilt --remove ROSMAP_SamplesToExpand.txt --silent --make-bed --out CEU_AncestryMatched_Genotypes
+########################################################################################################################
+
+#Extract CEU
+plink --threads $CORES --bfile CEU_AncestryMatched_Genotypes --keep ALL_RNASamplesComb.tsv --silent --make-bed --out All_CEU_ToTrainForTWAS
+
+#Extract ROS_Only:
+plink --threads $CORES --bfile CEU_AncestryMatched_Genotypes --keep ROS_RNASamples.tsv --silent --make-bed --out ROSMAPonly_CEU_ToTrainForTWAS
+```
+
+```{r sanitycheck, include=TRUE, echo=TRUE}
+FAM <- as.data.frame(fread('All_CEU_ToTrainForTWAS.fam'))
+row.names(FAM) <- FAM[,1]
+table(row.names(FAM) %in% colnames(Diag_Resid))
+Diag_Resid_train <- Diag_Resid[ , c("TargetID","Gene_Symbol","Chr","Coord", row.names(FAM) )]
+Norm_Resid_train <- Norm_Resid[ , c("TargetID","Gene_Symbol","Chr","Coord", row.names(FAM) )]
+
+FAM <- as.data.frame(fread('ROSMAPonly_CEU_ToTrainForTWAS.fam'))
+row.names(FAM) <- FAM[,1]
+table(row.names(FAM) %in% colnames(ROS_Diag_Resid))
+ROS_Diag_Resid_train <- ROS_Diag_Resid[ , c("TargetID","Gene_Symbol","Chr","Coord", row.names(FAM) )]
+ROS_Norm_Resid_train <- ROS_Norm_Resid[ , c("TargetID","Gene_Symbol","Chr","Coord", row.names(FAM) )]
+
+Diag_Resid_train <- Diag_Resid_train[ (Diag_Resid_train$Chr %in% c(1:22)) == T, ]
+Norm_Resid_train <- Norm_Resid_train[ (Norm_Resid_train$Chr %in% c(1:22)) == T, ]
+
+ROS_Diag_Resid_train <- ROS_Diag_Resid_train[ (ROS_Diag_Resid_train$Chr %in% c(1:22)) == T, ]
+ROS_Norm_Resid_train <- ROS_Norm_Resid_train[ (ROS_Norm_Resid_train$Chr %in% c(1:22)) == T, ]
+```
+
+## Annotate CMC Sex in FAM Files
+```{r download.data, cache=TRUE}
+library(dplyr)
+
+downloadFile <- function(id){
+  fread(syn_temp$get(id)$path, data.table = F)
+}
+downloadFile_version <- function(id , version){
+  fread(syn_temp$get(id, version = version)$path, data.table = F)
+}
+counts = 'syn21071622'
+ALL_USED_IDs = counts
+counts = downloadFile(counts) %>% data.frame()
+counts$Chr <- NULL
+counts$Start <- NULL
+counts$End <- NULL
+counts$Strand <- NULL
+# Parse gene lengths
+gene_lengths = counts[,c("Geneid", "Length")]
+counts$Length <- NULL
+gene_lengths <- rename(gene_lengths, gene_id = Geneid)
+# Get ancestry vector calculated using gemtools
+ANCESTRY_ID = 'syn2511399'
+ALL_USED_IDs[length(ALL_USED_IDs)+1] = ANCESTRY_ID
+ANCESTRY = downloadFile(ANCESTRY_ID) %>% 
+  plyr::rename(c('DNA_report..Genotyping.Sample_ID' = 'SNP_report:Genotyping_Sample_ID'))
+# Get genotype ids from synapse
+GENOTYPE_ID = 'syn16816490'
+ALL_USED_IDs = c(ALL_USED_IDs, GENOTYPE_ID)
+GENOTYPE = downloadFile(GENOTYPE_ID) %>% 
+  dplyr::select(Individual_ID, `SNP_report:Genotyping_Sample_ID`) %>%
+  dplyr::inner_join(ANCESTRY)
+
+#Get Metadata
+metadata = 'syn16816488' 
+ALL_USED_IDs[length(ALL_USED_IDs)+1] = metadata
+metadata = downloadFile_version(metadata, version = 13)  %>% 
+  dplyr::select(Individual_ID, Institution, Reported_Gender, Sex, Ethnicity, Age_of_Death, `PMI_(in_hours)`, Dx,
+                Sample_RNA_ID, one_of('rnaSeq_isolation:RIN',
+                                      'rnaSeq_report:Ribozero_Batch', 'rnaSeq_report:Library_Batch', 
+                                      'rnaSeq_report:Flowcell_Batch','rnaSeq_dissection:Brain_Region',
+                                      'rnaSeq_report:Exclude?',
+                                      'rnaSeq_report:Mapped_Reads',
+                                      'rnaSeq_report:Intragenic_Rate','rnaSeq_report:Intronic_Rate',
+                                      'rnaSeq_report:Intergenic_Rate','rnaSeq_report:Genes_Detected',
+                                      'rnaSeq_report:Expression_Profiling_Efficiency',
+                                      'rnaSeq_report:rRNA_Rate',
+                                      'rnaSeq_report:Total_Reads', 'rnaSeq_report:Percent_Aligned'))
+METADATA = metadata %>%
+  dplyr::left_join(GENOTYPE) %>%
+  dplyr::rename(PMI = `PMI_(in_hours)`,
+                GWAS_ID = `SNP_report:Genotyping_Sample_ID`,
+                Sample_ID = Sample_RNA_ID,
+                ReportExclude = `rnaSeq_report:Exclude?`,
+                SampleID = Sample_RNA_ID,
+                LibraryBatch = `rnaSeq_report:Library_Batch`,
+                FlowcellBatch = `rnaSeq_report:Flowcell_Batch`,
+                RibozeroBatch = `rnaSeq_report:Ribozero_Batch`,
+                Tissue = `rnaSeq_dissection:Brain_Region`,
+                MappedReads = `rnaSeq_report:Mapped_Reads`,
+                IntragenicRate = `rnaSeq_report:Intragenic_Rate`, 
+                IntronicRate = `rnaSeq_report:Intronic_Rate`, 
+                IntergenicRate = `rnaSeq_report:Intergenic_Rate`, 
+                GenesDetected = `rnaSeq_report:Genes_Detected`,
+                ExpProfEfficiency = `rnaSeq_report:Expression_Profiling_Efficiency`, 
+                rRNARate = `rnaSeq_report:rRNA_Rate`,
+                TotalReads = `rnaSeq_report:Total_Reads`, 
+                AlignmentRate = `rnaSeq_report:Percent_Aligned`,
+                RIN = `rnaSeq_isolation:RIN`) %>%
+  dplyr::select(SampleID, GWAS_ID, Individual_ID, Institution, Reported_Gender,Sex, Ethnicity, Age_of_Death, PMI, Dx, 
+                RIN, ReportExclude, EV.1, EV.2, EV.3, EV.4, EV.5,
+                LibraryBatch, FlowcellBatch, RibozeroBatch, Tissue, MappedReads, TotalReads, GenesDetected, AlignmentRate,
+                IntragenicRate, IntergenicRate, IntronicRate, ExpProfEfficiency, rRNARate) %>% 
+  dplyr::filter(Institution %in% c("MSSM", "Penn", "Pitt")) %>% 
+  dplyr::filter(SampleID %in% colnames(counts), !is.na(SampleID)) %>%
+  dplyr::mutate(Dx = forcats::fct_recode(Dx,  Other = "AFF", Other = "BP", Control = "Control", SCZ = "SCZ"))
+
+#METADATA$Individual_ID <- gsub( 'CMC_','',METADATA$Individual_ID )
+METADATA$GWAS_ID <- gsub( 'Pitt', 'PITT', METADATA$GWAS_ID )
+METADATA <- METADATA[ !duplicated(METADATA$GWAS_ID), ]
+METADATA <- METADATA[ is.na(METADATA$GWAS_ID)==F,]
+row.names( METADATA ) <- METADATA$GWAS_ID
+SEX <- c(1,2,0)
+names(SEX) <- c("XY","XX","XXY")
+###Total CEU Genotype
+FAM <- as.data.frame(fread('CEU_AncestryMatched_Genotypes.fam'))
+#table( FAM[,2][ grepl( 'PENN',FAM[,2] ) | grepl( 'PITT',FAM[,2] ) | grepl( 'MSSM',FAM[,2] ) ] %in% METADATA$GWAS_ID)
+
+FAM[ grepl( 'PENN',FAM[,2] ) | grepl( 'PITT',FAM[,2] ) | grepl( 'MSSM',FAM[,2] ), 5 ] <- SEX[ METADATA[ FAM[,2][ grepl( 'PENN',FAM[,2] ) | grepl( 'PITT',FAM[,2] ) | grepl( 'MSSM',FAM[,2] ) ] , 'Sex'] ]
+write.table(FAM, file='CEU_AncestryMatched_Genotypes.fam', row.names = F, col.names=F, quote=F, sep=" ")
+
+
+###CEU Genos to train
+FAM <- as.data.frame(fread('All_CEU_ToTrainForTWAS.fam'))
+
+FAM[ grepl( 'PENN',FAM[,2] ) | grepl( 'PITT',FAM[,2] ) | grepl( 'MSSM',FAM[,2] ), 5 ] <- SEX[ METADATA[ FAM[,2][ grepl( 'PENN',FAM[,2] ) | grepl( 'PITT',FAM[,2] ) | grepl( 'MSSM',FAM[,2] ) ] , 'Sex'] ]
+write.table(FAM, file='All_CEU_ToTrainForTWAS.fam', row.names = F, col.names=F, quote=F, sep=" ")
+
+```
+
+## Push Results to Synapse -- Contained in ProcessData.Rmd if needed for reference
+```{r synapse.parameters.head, include=FALSE, results='hide', echo=FALSE, cache=TRUE}
+parentId = 'syn18936948';
+activityName = 'CMC Additional ROSMAP Processed TWAS Training Data';
+activityDescription = 'Data from processing and hamonizing CEU ancestry matched Genotypes with available RNA-Seq profiles which were aligned to GRCh38 but annotated with hg19 TSS sites here';
+thisFileName <- 'ProcessData_CMC.Rmd'
+# Github link
+thisRepo <- githubr::getRepo(repository = "jgockley62/TWAS", ref="branch", refName='master')
+thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thisFileName))
+```
+
+```{r synapse.parameters, include=FALSE, results='hide', echo=FALSE, cache=TRUE}
+activityName = 'CMC Additional ROSMAP Processed TWAS Training Data';
+activityDescription = 'Data from processing and hamonizing CEU ancestry matched Genotypes with available RNA-Seq profiles';
+
+CODE <- syn_temp$store(synapseclient$Folder(name = "Processed_TWAS_Training_Data_with_CMC", parentId = parentId))
+
+#Set Used SynIDs For Provenance
+Syns_Used <- c("syn5223705", "syn8698211", "syn3817650", "syn8690904", 
+"syn6126119", "syn8698214", "syn8449369", "syn6126114", "syn6145639", "syn8690799"
+)
+
+# Set annotations
+EXP.all.annotations = list(
+  dataType = 'mRNA',
+  dataSubType = 'geneExp',
+  summaryLevel = 'gene',
+  assay  = 'RNAseq',
+  tissueTypeAbrv  = c('TCX', 'DLPFC', 'PFG', 'STG', 'IFG', 'FP'), 
+  study = c('MAYO','MSBB', 'ROSMAP'), 
+  organism = 'HomoSapiens',
+  consortium  = 'AMPAD',
+  normalizationStatus = TRUE,
+  normalizationType = 'CQN',
+  rnaquantification = 'RSEM',
+  genomeAssemblyID = 'GRCh38'
+)
+# Set annotations
+Var.all.annotations = list(
+  dataType = 'Variant',
+  dataSubType = 'SNP',
+  summaryLevel = 'Nucleotide',
+  assay  = 'Genotype Array',
+  tissueTypeAbrv  = c('Whole Blood'), 
+  study = c('MAYO','MSBB', 'ROSMAP'), 
+  organism = 'HomoSapiens',
+  consortium  = 'AMPAD',
+  genomeAssemblyID = 'GRCh37'
+)
+
+Basic.annotations = list(
+  dataType = 'Induvidual List',
+  dataSubType = 'Plink PatientID Filter',
+  study = c('MAYO','MSBB', 'ROSMAP'), 
+  organism = 'HomoSapiens',
+  consortium  = 'AMPAD'
+)
+
+## TOTAL SVA-only Exp
+write.table(Norm_Resid, file="ALL_RNA_Seq_SVAadusted.tsv", col.names =T, row.names=F, sep="\t", quote=F)
+Syns_Used_SVA_EXP <- c('syn11384608', 'syn8485026', 'syn6100548', 'syn8456704', 'syn5879839', 'syn3382527','syn23674977', 'syn8466825')
+
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_RNA_Seq_SVAadusted.tsv', name = 'Total RNA-Seq with Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_SVA_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+EXP.all.annotations$dataSubType = 'residualGeneExpForeQTL'
+syn_temp$setAnnotations(ENRICH_OBJ, annotations = EXP.all.annotations)
+
+## TOTAL Diagnosis Exp
+write.table(Diag_Resid, file="ALL_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv", col.names =T, row.names=F, sep="\t", quote=F)
+Syns_Used_Diagnosis_EXP <- c('syn20801991', 'syn11384608', 'syn20801798', 'syn6100548',  'syn20800652', 'syn5879839', 'syn3382527','syn23674977')
+
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv', name = 'Total RNA-Seq with Diagnosis Regressed Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_Diagnosis_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+    EXP.all.annotations$dataSubType = 'residualGeneExpForDiagnosisRegressedeQTL'
+    syn_temp$setAnnotations(ENRICH_OBJ, annotations = EXP.all.annotations)
+
+## CEU SVA-only Exp
+write.table(Norm_Resid_train, file="ALL_CEU_RNA_Seq_SVAadusted.tsv", col.names =T, row.names=F, sep="\t", quote=F)
+Syns_Used_SVA_EXP <- c('syn11384608', 'syn8485026', 'syn6100548', 'syn8456704', 'syn5879839', 'syn3382527','syn23674977', 'syn8466825')
+
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_CEU_RNA_Seq_SVAadusted.tsv', name = 'CEU RNA-Seq with Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_SVA_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  EXP.all.annotations$dataSubType = 'residualGeneExpForeQTL'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = EXP.all.annotations)
+
+## CEU Diagnosis Exp
+write.table(Diag_Resid_train, file="ALL_CEU_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv", col.names =T, row.names=F, sep="\t", quote=F)
+Syns_Used_Diagnosis_EXP <- c('syn20801991', 'syn11384608', 'syn20801798', 'syn6100548',  'syn20800652', 'syn5879839', 'syn3382527','syn23674977')
+
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ALL_CEU_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv', name = 'CEU RNA-Seq with Diagnosis Regressed Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_Diagnosis_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  EXP.all.annotations$dataSubType = 'residualGeneExpForDiagnosisRegressedeQTL'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = EXP.all.annotations)
+
+#ROSMAP only Expression
+  ## CEU SVA-only Exp -- ROSMAP Only
+write.table(ROS_Norm_Resid_train, file="ROS_CEU_RNA_Seq_SVAadusted.tsv", col.names =T, row.names=F, sep="\t", quote=F)
+Syns_Used_SVA_EXP <- c('syn8456704', 'syn5879839', 'syn3382527','syn23674977' )
+
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ROS_CEU_RNA_Seq_SVAadusted.tsv', name = 'CEU ROSMAP Only RNA-Seq with Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_SVA_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  EXP.all.annotations$dataSubType = 'residualGeneExpForeQTL'
+  EXP.all.annotations$tissueTypeAbrv = 'DLPFC'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = EXP.all.annotations)
+
+  ## CEU Diagnosis Exp -- ROSMAP Only
+write.table(ROS_Diag_Resid_train, file="ROS_CEU_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv", col.names =T, row.names=F, sep="\t", quote=F)
+Syns_Used_Diagnosis_EXP <- c( 'syn20800652', 'syn5879839', 'syn3382527','syn23674977')
+ENRICH_OBJ <- syn_temp$store( synapseclient$File( path='ROS_CEU_RNA_Seq_SVAadusted_DiagnosisRegressed.tsv', name = 'CEU ROSMAP Only RNA-Seq with Diagnosis Regressed Normalised, covariates, surrogate variable adjusted residual expression (for eQTL)', parentId=CODE$properties$id ), used = Syns_Used_Diagnosis_EXP, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  EXP.all.annotations$dataSubType = 'residualGeneExpForDiagnosisRegressedeQTL'
+  EXP.all.annotations$tissueTypeAbrv = 'DLPFC'
+  syn_temp$setAnnotations(ENRICH_OBJ, annotations = EXP.all.annotations)
+
+#ALL INDV
+ ##Check that order is correct between file lists
+  #table(paste0(Tot_Samps[,1], '_', Tot_Samps[,2]) == colnames(Diag_Resid)[ 5:length(colnames(Diag_Resid))])
+Syns <- c( 'syn20800652', 'syn5879839', 'syn3382527','syn23674977')
+ENRICH_OBJ_Tot_list <- syn_temp$store( synapseclient$File( path='ALL_RNASamplesComb.tsv', name = 'All Indv with RNA-Seq Profiles in AMP-Ad For Filtering', parentId=CODE$properties$id ), used = Syns, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  syn_temp$setAnnotations(ENRICH_OBJ_Tot_list, annotations = Basic.annotations)
+   
+#ROSMAP INDV
+ ##Check that order is correct between file lists
+  #table(paste0(ROS_Samps[,1], '_', ROS_Samps[,2]) == colnames(ROS_Norm_Resid)[ 5:length(colnames(ROS_Norm_Resid))])
+Syns <- c( 'syn20800652', 'syn5879839', 'syn3382527','syn23674977')
+ENRICH_OBJ_RM_List <- syn_temp$store( synapseclient$File( path='ROS_RNASamples.tsv', name = 'ROSMAP Indv with RNA-Seq Profiles in AMP-Ad For Filtering', parentId=CODE$properties$id ), used = Syns, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+  syn_temp$setAnnotations(ENRICH_OBJ_RM_List, annotations = Basic.annotations)
+
+###PLINK ALL -- STORE IN SEPERATE FOLDER INCASE PHI LIMITATIONS APPLY LATER
+  CODE <- syn_temp$store(synapseclient$Folder(name = "Ancestry_Clustered_Genotypes_with_CMC", parentId = parentId))
+  Syns <- c( 'syn23674975', 'syn23674976', 'syn23674977', ENRICH_OBJ_Tot_list$properties$id  )
+#FAM  
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='All_CEU_ToTrainForTWAS.fam', name = 'All Matched CEU Genotype FAM', parentId=CODE$properties$id ), used = Syns, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+syn_temp$setAnnotations(ENRICH_OBJ, annotations = Var.all.annotations)
+  
+#BED
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='All_CEU_ToTrainForTWAS.bed', name = 'All Matched CEU Genotype BED', parentId=CODE$properties$id ), used = Syns, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+syn_temp$setAnnotations(ENRICH_OBJ, annotations = Var.all.annotations)
+
+#LOG
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='All_CEU_ToTrainForTWAS.log', name = 'All Matched CEU Genotype LOG', parentId=CODE$properties$id ), used = Syns, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+syn_temp$setAnnotations(ENRICH_OBJ, annotations = Var.all.annotations)
+
+#BIM
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='All_CEU_ToTrainForTWAS.bim', name = 'All Matched CEU Genotype BIM', parentId=CODE$properties$id ), used = Syns, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+syn_temp$setAnnotations(ENRICH_OBJ, annotations = Var.all.annotations)
+
+#PLINK Rosmap
+  Syns <- c( 'syn20800652', 'syn5879839', 'syn3382527', ENRICH_OBJ_RM_List$properties$id)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ROSMAPonly_CEU_ToTrainForTWAS.fam', name = 'ROSMAP Matched CEU Genotype FAM', parentId=CODE$properties$id ), used = Syns, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+syn_temp$setAnnotations(ENRICH_OBJ, annotations = Var.all.annotations)
+  
+#BED
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ROSMAPonly_CEU_ToTrainForTWAS.bed', name = 'ROSMAP Matched CEU Genotype BED', parentId=CODE$properties$id ), used = Syns, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+syn_temp$setAnnotations(ENRICH_OBJ, annotations = Var.all.annotations)
+
+#LOG
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ROSMAPonly_CEU_ToTrainForTWAS.log', name = 'ROSMAP Matched CEU Genotype LOG', parentId=CODE$properties$id ), used = Syns, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+syn_temp$setAnnotations(ENRICH_OBJ, annotations = Var.all.annotations)
+
+#BIM
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='ROSMAPonly_CEU_ToTrainForTWAS.bim', name = 'ROSMAP Matched CEU Genotype BIM', parentId=CODE$properties$id ), used = Syns, activityName = activityName, executed = thisFile, activityDescription = activityDescription)
+syn_temp$setAnnotations(ENRICH_OBJ, annotations = Var.all.annotations)
+
+```
+
+```{bash Clean, echo=T, results='hide'}
+#rm -r ~/TWAS/bin/
+rm *.bed
+rm *.fam
+rm *.bim
+rm *.log
+rm *.tsv
+rm MSBB_SamplesToExpand.txt
+rm *.map
+rm *.ped
+```
+
+### R Source Code
+[Github](`r thisFile`)
+
+##Knit to Synapse
+```{r knitmd, eval=FALSE, cache=FALSE, include=FALSE}
+synapseclient <- reticulate::import("synapseclient")
+syn_temp <- synapseclient$Synapse()
+syn_temp$login()
+
+library(data.table)
+
+setwd("~/TWAS/code/")
+source("~/TWAS/utilityFunctions/knitfile2synapseClient.R")
+source("~/TWAS/utilityFunctions/hook_synapseMdSyntax_plot.R")
+
+createAndKnitToFolderEntityClient(file = "ProcessData.Rmd",
+                                          parentId ="syn18936948",
+                                          folderName = 'Processed_TWAS_Training_Data_with_CMC')
+```
