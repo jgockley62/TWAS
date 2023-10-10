@@ -90,7 +90,7 @@ weights.bslmm = function( input , bv_type , snp , out=NA ) {
 weights.lasso = function( input , hsq , snp , out=NA ) {
 	if ( is.na(out) ) out = paste(input,".LASSO",sep='')
 
-	arg = paste( opt$PATH_plink , " --allow-no-sex --bfile " , input , " --lasso " , hsq , " --threads 5 --silent --out " , out , sep='' )
+	arg = paste( opt$PATH_plink , " --allow-no-sex --bfile " , input , " --lasso " , hsq , " --threads 16 --silent --out " , out , sep='' )
 	system( arg , ignore.stdout=SYS_PRINT,ignore.stderr=SYS_PRINT )
 	if ( !file.exists(paste(out,".lasso",sep='')) ) {
 	cat( paste(out,".lasso",sep='') , " LASSO output did not exist\n" )
@@ -251,7 +251,7 @@ if ( !is.na(opt$covar) ) {
 
 geno.file = opt$tmp
 # recode to the intersection of samples and new phenotype
-arg = paste( opt$PATH_plink ," --allow-no-sex --bfile ",opt$bfile," --pheno ",pheno.file," --keep ",pheno.file," --threads 5 --silent --make-bed --out ",geno.file,sep='')
+arg = paste( opt$PATH_plink ," --allow-no-sex --bfile ",opt$bfile," --pheno ",pheno.file," --keep ",pheno.file," --threads 16 --silent --make-bed --out ",geno.file,sep='')
 system(arg , ignore.stdout=SYS_PRINT,ignore.stderr=SYS_PRINT)
 
 # --- HERITABILITY ANALYSIS
@@ -259,7 +259,7 @@ if ( is.na(opt$hsq_set) ) {
 if ( opt$verbose >= 1 ) cat("### Estimating heritability\n")
 
 # 1. generate GRM
-arg = paste( opt$PATH_plink," --allow-no-sex --bfile ",opt$tmp," --make-grm-bin --threads 5 --silent --out ",opt$tmp,sep='')
+arg = paste( opt$PATH_plink," --allow-no-sex --bfile ",opt$tmp," --make-grm-bin --threads 16 --silent --out ",opt$tmp,sep='')
 system(arg , ignore.stdout=SYS_PRINT,ignore.stderr=SYS_PRINT)
 
 # 2. estimate heritability
@@ -392,7 +392,7 @@ for ( i in 1:opt$crossval ) {
 	# hide current fold
 	cv.file = paste(opt$tmp,".cv",sep='')
 	write.table( cv.train , quote=F , row.names=F , col.names=F , file=paste(cv.file,".keep",sep=''))	
-	arg = paste( opt$PATH_plink ," --allow-no-sex --bfile ",opt$tmp," --keep ",cv.file,".keep --threads 5 --silent --out ",cv.file," --make-bed",sep='')
+	arg = paste( opt$PATH_plink ," --allow-no-sex --bfile ",opt$tmp," --keep ",cv.file,".keep --threads 16 --silent --out ",cv.file," --make-bed",sep='')
 	system(arg , ignore.stdout=SYS_PRINT,ignore.stderr=SYS_PRINT)
 
 	for ( mod in 1:M ) {
